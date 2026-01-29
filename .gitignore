@@ -10,3 +10,9 @@ proxychains.conf
 
 # Agent fork-join session files (auto-added)
 .fork-join/
+
+# Claude Code / claude-flow local config
+.claude-flow/
+.claude/
+.swarm/
+.mcp.json
