@@ -10,24 +10,24 @@
 #
 # Options:
 #   --name NAME        Runner name (default: robrix-runner-<hostname>)
-#   --labels LABELS    Comma-separated labels (default: self-hosted,robrix)
+#   --labels LABELS    Comma-separated labels (default: self-hosted,robrix,linux,arm64)
 #   --work-dir DIR     Work directory (default: _work)
-#   --token TOKEN      Runner registration token (or set GITHUB_RUNNER_TOKEN env var)
-#   --url URL          Repository URL (default: https://github.com/epiphytic/robrix)
+#   --token TOKEN      Runner registration token (auto-fetched via gh if not provided)
+#   --repo OWNER/REPO  Repository (default: epiphytic/robrix)
 #   --replace          Replace existing runner with same name
 #   --unattended       Run setup without prompts
 #   --help             Show this help message
 #
 # Prerequisites:
+#   - gh (GitHub CLI) - for automatic token generation
 #   - curl
 #   - tar (Linux/macOS) or unzip (Windows)
-#   - jq (for token generation via API)
 #
-# To get a runner token:
-#   1. Go to https://github.com/epiphytic/robrix/settings/actions/runners/new
-#   2. Copy the token from the configuration command
-#   OR
-#   3. Use GitHub CLI: gh api repos/epiphytic/robrix/actions/runners/registration-token -X POST --jq '.token'
+# The script will automatically:
+#   1. Detect your platform (OS and architecture)
+#   2. Generate a runner registration token via gh CLI
+#   3. Download and configure the GitHub Actions runner
+#   4. Set up appropriate labels for the runner
 #
 
 set -euo pipefail
@@ -36,10 +36,11 @@ set -euo pipefail
 # Configuration
 # ============================================================================
 
-REPO_URL="${GITHUB_RUNNER_REPO_URL:-https://github.com/epiphytic/robrix}"
+REPO="${GITHUB_RUNNER_REPO:-epiphytic/robrix}"
+REPO_URL="https://github.com/${REPO}"
 RUNNER_VERSION="${GITHUB_RUNNER_VERSION:-2.321.0}"
 RUNNER_NAME="${GITHUB_RUNNER_NAME:-robrix-runner-$(hostname -s)}"
-RUNNER_LABELS="${GITHUB_RUNNER_LABELS:-self-hosted,robrix}"
+RUNNER_LABELS="${GITHUB_RUNNER_LABELS:-}" # Will be auto-set based on platform
 RUNNER_WORK_DIR="${GITHUB_RUNNER_WORK_DIR:-_work}"
 RUNNER_TOKEN="${GITHUB_RUNNER_TOKEN:-}"
 REPLACE_EXISTING=false
@@ -73,8 +74,31 @@ log_error() {
 }
 
 show_help() {
-	head -40 "$0" | tail -35 | sed 's/^#//' | sed 's/^ //'
+	head -35 "$0" | tail -30 | sed 's/^#//' | sed 's/^ //'
 	exit 0
+}
+
+check_gh_cli() {
+	if ! command -v gh &>/dev/null; then
+		log_error "GitHub CLI (gh) is not installed."
+		echo ""
+		echo "Install it from: https://cli.github.com/"
+		echo ""
+		echo "  macOS:   brew install gh"
+		echo "  Linux:   See https://github.com/cli/cli/blob/trunk/docs/install_linux.md"
+		echo "  Windows: winget install GitHub.cli"
+		echo ""
+		exit 1
+	fi
+
+	# Check if authenticated
+	if ! gh auth status &>/dev/null; then
+		log_error "GitHub CLI is not authenticated."
+		echo ""
+		echo "Run: gh auth login"
+		echo ""
+		exit 1
+	fi
 }
 
 detect_os() {
@@ -108,6 +132,43 @@ get_runner_url() {
 	echo "https://github.com/actions/runner/releases/download/v${version}/actions-runner-${os}-${arch}-${version}.${ext}"
 }
 
+get_runner_token() {
+	log_info "Fetching runner registration token via gh CLI..."
+	local token
+	token=$(gh api "repos/${REPO}/actions/runners/registration-token" -X POST --jq '.token' 2>/dev/null)
+
+	if [[ -z "$token" ]]; then
+		log_error "Failed to get runner registration token."
+		echo ""
+		echo "Make sure you have admin access to the repository: ${REPO}"
+		echo "Or provide a token manually with --token"
+		echo ""
+		exit 1
+	fi
+
+	echo "$token"
+}
+
+generate_labels() {
+	local os="$1"
+	local arch="$2"
+
+	# Base labels
+	local labels="self-hosted,robrix"
+
+	# Add OS label
+	case "$os" in
+	linux) labels="${labels},linux" ;;
+	osx) labels="${labels},macos" ;;
+	win) labels="${labels},windows" ;;
+	esac
+
+	# Add architecture label
+	labels="${labels},${arch}"
+
+	echo "$labels"
+}
+
 # ============================================================================
 # Parse Arguments
 # ============================================================================
@@ -130,8 +191,9 @@ while [[ $# -gt 0 ]]; do
 		RUNNER_TOKEN="$2"
 		shift 2
 		;;
-	--url)
-		REPO_URL="$2"
+	--repo)
+		REPO="$2"
+		REPO_URL="https://github.com/${REPO}"
 		shift 2
 		;;
 	--replace)
@@ -171,33 +233,21 @@ main() {
 	fi
 
 	log_info "Detected platform: ${os}-${arch}"
+	log_info "Repository: ${REPO}"
+
+	# Auto-generate labels if not provided
+	if [[ -z "$RUNNER_LABELS" ]]; then
+		RUNNER_LABELS=$(generate_labels "$os" "$arch")
+	fi
+
 	log_info "Runner name: ${RUNNER_NAME}"
 	log_info "Runner labels: ${RUNNER_LABELS}"
-	log_info "Repository: ${REPO_URL}"
 
-	# Check for token
+	# Get token via gh CLI if not provided
 	if [[ -z "$RUNNER_TOKEN" ]]; then
-		log_warn "No runner token provided."
-		echo ""
-		echo "To get a runner token:"
-		echo "  1. Visit: ${REPO_URL}/settings/actions/runners/new"
-		echo "  2. Copy the token from the configuration command"
-		echo ""
-		echo "Or use GitHub CLI:"
-		echo "  gh api repos/epiphytic/robrix/actions/runners/registration-token -X POST --jq '.token'"
-		echo ""
-
-		if [[ "$UNATTENDED" == true ]]; then
-			log_error "Cannot proceed without token in unattended mode"
-			exit 1
-		fi
-
-		read -rp "Enter runner registration token: " RUNNER_TOKEN
-
-		if [[ -z "$RUNNER_TOKEN" ]]; then
-			log_error "Token is required"
-			exit 1
-		fi
+		check_gh_cli
+		RUNNER_TOKEN=$(get_runner_token)
+		log_success "Runner token obtained successfully"
 	fi
 
 	# Create runner directory
@@ -283,7 +333,7 @@ main() {
 	echo "  To uninstall:"
 	echo "    sudo ./svc.sh stop"
 	echo "    sudo ./svc.sh uninstall"
-	echo "    ./config.sh remove --token YOUR_TOKEN"
+	echo "    ./config.sh remove --token \$(gh api repos/${REPO}/actions/runners/remove-token -X POST --jq '.token')"
 	echo "=========================================="
 
 	# Optionally start the runner
