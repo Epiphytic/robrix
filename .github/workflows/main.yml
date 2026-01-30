@@ -1,10 +1,14 @@
 # Trigger CI on PR updates and main branch pushes
 # Uses caching and selective path triggers to optimize performance
+#
+# NOTE: Automatic CI is DISABLED by default.
+# Set repository variable ENABLE_ROBRIX_BUILDS=true to enable automatic CI.
+# Manual workflow dispatch is always available regardless of this setting.
 
 name: Robrix CI
 
-# Only `main` branch
 on:
+    workflow_dispatch:  # Always allow manual runs
     push:
       branches:
         - main
@@ -45,7 +49,7 @@ env:
 
 jobs:
   clippy:
-    if: github.event.pull_request.draft == false
+    if: github.event_name == 'workflow_dispatch' || (vars.ENABLE_ROBRIX_BUILDS == 'true' && github.event.pull_request.draft == false)
     name: clippy
     runs-on: macos-14  ## avoids having to install Linux deps
     steps:
@@ -60,7 +64,7 @@ jobs:
       - run: cargo clippy --workspace --all-features
 
   typos:
-    if: github.event.pull_request.draft == false
+    if: github.event_name == 'workflow_dispatch' || (vars.ENABLE_ROBRIX_BUILDS == 'true' && github.event.pull_request.draft == false)
     name: typos
     runs-on: ubuntu-latest
     steps:
