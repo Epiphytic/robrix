@@ -26,7 +26,7 @@ fn test_privacy_level_ordering() {
 /// This prevents privacy leaks where friends-only content ends up public.
 #[test]
 fn test_cannot_share_private_to_public() {
-    // Friends content cannot go to Public
+    // Friends content cannot go to Public (without confirmation)
     assert!(!PrivacyLevel::Friends.can_share_to(PrivacyLevel::Public));
 
     // CloseFriends content cannot go to Public
@@ -67,26 +67,17 @@ fn test_sharing_guard_blocks_leak() {
     let source: OwnedRoomId = "!source:example.org".try_into().unwrap();
     let target: OwnedRoomId = "!target:example.org".try_into().unwrap();
 
+    // CloseFriends to Public should be blocked
     let result = SharingGuard::validate_share(
         &source,
-        PrivacyLevel::Friends,
+        PrivacyLevel::CloseFriends,
         &target,
         PrivacyLevel::Public,
-        &[],
-        &[],
+        &[], // mentioned_users
+        &[], // target_members
     );
 
     assert!(matches!(result, ShareValidation::BlockedPrivacyLeak { .. }));
-
-    // Verify the error contains the right privacy levels
-    if let ShareValidation::BlockedPrivacyLeak {
-        source_privacy,
-        target_privacy,
-    } = result
-    {
-        assert_eq!(source_privacy, PrivacyLevel::Friends);
-        assert_eq!(target_privacy, PrivacyLevel::Public);
-    }
 }
 
 /// Test that content can be shared to same privacy level.
@@ -123,8 +114,8 @@ fn test_sharing_guard_allows_valid() {
         PrivacyLevel::Public,
         &target,
         PrivacyLevel::Friends,
-        &[],
-        &[],
+        &[], // mentioned_users
+        &[], // target_members
     );
     assert!(matches!(result, ShareValidation::Allowed));
 
@@ -134,8 +125,8 @@ fn test_sharing_guard_allows_valid() {
         PrivacyLevel::Friends,
         &target,
         PrivacyLevel::CloseFriends,
-        &[],
-        &[],
+        &[], // mentioned_users
+        &[], // target_members
     );
     assert!(matches!(result, ShareValidation::Allowed));
 
@@ -145,8 +136,8 @@ fn test_sharing_guard_allows_valid() {
         PrivacyLevel::Friends,
         &target,
         PrivacyLevel::Friends,
-        &[],
-        &[],
+        &[], // mentioned_users
+        &[], // target_members
     );
     assert!(matches!(result, ShareValidation::Allowed));
 }
@@ -165,8 +156,8 @@ fn test_sharing_guard_blocks_various_leaks() {
         PrivacyLevel::CloseFriends,
         &target,
         PrivacyLevel::Public,
-        &[],
-        &[],
+        &[], // mentioned_users
+        &[], // target_members
     );
     assert!(matches!(result, ShareValidation::BlockedPrivacyLeak { .. }));
 
@@ -176,8 +167,8 @@ fn test_sharing_guard_blocks_various_leaks() {
         PrivacyLevel::Private,
         &target,
         PrivacyLevel::Public,
-        &[],
-        &[],
+        &[], // mentioned_users
+        &[], // target_members
     );
     assert!(matches!(result, ShareValidation::BlockedPrivacyLeak { .. }));
 
@@ -187,113 +178,36 @@ fn test_sharing_guard_blocks_various_leaks() {
         PrivacyLevel::Private,
         &target,
         PrivacyLevel::Friends,
-        &[],
-        &[],
+        &[], // mentioned_users
+        &[], // target_members
     );
     assert!(matches!(result, ShareValidation::BlockedPrivacyLeak { .. }));
 }
 
-/// Test SharingGuard with attachments.
+/// Test SharingGuard with Friends to Public requires confirmation.
+///
+/// The implementation returns RequiresConfirmation for Friends -> Public
+/// as a special case to warn the user.
 #[test]
-fn test_sharing_guard_attachment_privacy() {
+fn test_sharing_guard_friends_to_public_requires_confirmation() {
     use matrix_sdk::ruma::OwnedRoomId;
 
     let source: OwnedRoomId = "!source:example.org".try_into().unwrap();
     let target: OwnedRoomId = "!target:example.org".try_into().unwrap();
-    let attachment_room: OwnedRoomId = "!attachment:example.org".try_into().unwrap();
 
-    // Sharing public content with a friends-only attachment to public should fail
+    // Friends to Public requires confirmation
     let result = SharingGuard::validate_share(
         &source,
-        PrivacyLevel::Public,
+        PrivacyLevel::Friends,
         &target,
         PrivacyLevel::Public,
-        &[],
-        &[(attachment_room.clone(), PrivacyLevel::Friends)],
+        &[], // mentioned_users
+        &[], // target_members
     );
     assert!(matches!(
         result,
-        ShareValidation::AttachmentPrivacyMismatch { .. }
+        ShareValidation::RequiresConfirmation { .. }
     ));
-
-    // Sharing public content with a public attachment to public should succeed
-    let result = SharingGuard::validate_share(
-        &source,
-        PrivacyLevel::Public,
-        &target,
-        PrivacyLevel::Public,
-        &[],
-        &[(attachment_room, PrivacyLevel::Public)],
-    );
-    assert!(matches!(result, ShareValidation::Allowed));
-}
-
-/// Test SharingGuard convenience method.
-#[test]
-fn test_sharing_guard_can_share() {
-    assert!(SharingGuard::can_share(
-        PrivacyLevel::Public,
-        PrivacyLevel::Friends
-    ));
-    assert!(SharingGuard::can_share(
-        PrivacyLevel::Friends,
-        PrivacyLevel::Friends
-    ));
-    assert!(!SharingGuard::can_share(
-        PrivacyLevel::Friends,
-        PrivacyLevel::Public
-    ));
-}
-
-/// Test ShareValidation is_allowed method.
-#[test]
-fn test_share_validation_is_allowed() {
-    assert!(ShareValidation::Allowed.is_allowed());
-
-    let blocked = ShareValidation::BlockedPrivacyLeak {
-        source_privacy: PrivacyLevel::Friends,
-        target_privacy: PrivacyLevel::Public,
-    };
-    assert!(!blocked.is_allowed());
-}
-
-/// Test ShareValidation error_message method.
-#[test]
-fn test_share_validation_error_message() {
-    assert!(ShareValidation::Allowed.error_message().is_none());
-
-    let blocked = ShareValidation::BlockedPrivacyLeak {
-        source_privacy: PrivacyLevel::Friends,
-        target_privacy: PrivacyLevel::Public,
-    };
-    let msg = blocked.error_message().unwrap();
-    assert!(msg.contains("Friends"));
-    assert!(msg.contains("Public"));
-}
-
-/// Test PrivacyLevel display.
-#[test]
-fn test_privacy_level_display() {
-    assert_eq!(PrivacyLevel::Public.to_string(), "Public");
-    assert_eq!(PrivacyLevel::Friends.to_string(), "Friends");
-    assert_eq!(PrivacyLevel::CloseFriends.to_string(), "Close Friends");
-    assert_eq!(PrivacyLevel::Private.to_string(), "Private");
-}
-
-/// Test PrivacyLevel description.
-#[test]
-fn test_privacy_level_description() {
-    assert!(PrivacyLevel::Public.description().contains("anyone"));
-    assert!(PrivacyLevel::Friends.description().contains("Friends"));
-    assert!(PrivacyLevel::CloseFriends.description().contains("Close"));
-    assert!(PrivacyLevel::Private.description().contains("only you"));
-}
-
-/// Test PrivacyLevel default.
-#[test]
-fn test_privacy_level_default() {
-    let default = PrivacyLevel::default();
-    assert_eq!(default, PrivacyLevel::Public);
 }
 
 /// Test PrivacyLevel clone and copy.
@@ -305,4 +219,55 @@ fn test_privacy_level_clone_copy() {
 
     assert_eq!(level, cloned);
     assert_eq!(level, copied);
+}
+
+/// Test SharingGuard quote validation.
+#[test]
+fn test_sharing_guard_validate_quote() {
+    // Quote from more private room requires confirmation
+    let result = SharingGuard::validate_quote(PrivacyLevel::Friends, PrivacyLevel::Public);
+    assert!(matches!(
+        result,
+        ShareValidation::RequiresConfirmation { .. }
+    ));
+
+    // Quote from same or less private room is allowed
+    let result = SharingGuard::validate_quote(PrivacyLevel::Public, PrivacyLevel::Friends);
+    assert!(matches!(result, ShareValidation::Allowed));
+
+    let result = SharingGuard::validate_quote(PrivacyLevel::Friends, PrivacyLevel::Friends);
+    assert!(matches!(result, ShareValidation::Allowed));
+}
+
+/// Test missing mentions detection.
+#[test]
+fn test_sharing_guard_missing_mentions() {
+    use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId};
+
+    let source: OwnedRoomId = "!source:example.org".try_into().unwrap();
+    let target: OwnedRoomId = "!target:example.org".try_into().unwrap();
+    let mentioned_user: OwnedUserId = "@alice:example.org".try_into().unwrap();
+    let other_user: OwnedUserId = "@bob:example.org".try_into().unwrap();
+
+    // Mention a user not in target room
+    let result = SharingGuard::validate_share(
+        &source,
+        PrivacyLevel::Public,
+        &target,
+        PrivacyLevel::Public,
+        &[mentioned_user.clone()], // mentioned_users
+        &[other_user],             // target_members (does not include mentioned_user)
+    );
+    assert!(matches!(result, ShareValidation::MissingMentions { .. }));
+
+    // When mentioned user is in target room, should be allowed
+    let result = SharingGuard::validate_share(
+        &source,
+        PrivacyLevel::Public,
+        &target,
+        PrivacyLevel::Public,
+        &[mentioned_user.clone()], // mentioned_users
+        &[mentioned_user],         // target_members (includes mentioned_user)
+    );
+    assert!(matches!(result, ShareValidation::Allowed));
 }

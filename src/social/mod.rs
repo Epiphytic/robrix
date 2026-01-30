@@ -42,7 +42,13 @@ pub use widgets::feed_view::{FeedState, SocialFeedView, SocialFeedViewAction};
 pub use widgets::post_card::{LinkPreviewData, PostCardData, SocialPostCard, SocialPostCardAction};
 pub use widgets::post_composer::{AttachedMedia, SocialPostComposer, SocialPostComposerAction};
 
-// Re-export privacy types (Phase 7/9)
+// Re-export newsfeed types (Phase 4)
+pub use newsfeed::{
+    create_feed_sync_filter, ContentFilter, FeedAggregator, FeedError, FeedFilterSettings,
+    FeedItem, FeedSortOrder,
+};
+
+// Re-export privacy types (Phase 7)
 pub use privacy::{PrivacyLevel, ShareValidation, SharingGuard};
 
 /// Register all social feature UI components.
