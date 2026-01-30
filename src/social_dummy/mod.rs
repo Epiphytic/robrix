@@ -74,7 +74,4 @@ impl Widget for SocialFriendList {
     }
 }
 
-/// Register placeholder widgets (no-op when social features disabled).
-pub fn live_design(_cx: &mut Cx) {
-    // No-op: social features are disabled
-}
+
