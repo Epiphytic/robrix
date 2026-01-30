@@ -48,6 +48,9 @@ pub use newsfeed::{
     FeedItem, FeedSortOrder,
 };
 
+// Re-export privacy types (Phase 7)
+pub use privacy::{PrivacyLevel, ShareValidation, SharingGuard};
+
 /// Register all social feature UI components.
 pub fn live_design(cx: &mut Cx) {
     // Register all widget designs

@@ -1,4 +1,7 @@
 //! Privacy and security module.
+//!
+//! This module provides privacy safeguards to prevent content from being
+//! shared to audiences with less restrictive visibility than intended.
 
 pub mod sharing_guard;
 
