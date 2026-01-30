@@ -19,8 +19,8 @@ pub mod widgets;
 mod actions;
 mod requests;
 
-pub use actions::*;
-pub use requests::*;
+// Note: actions and requests modules are placeholders for future use.
+// Re-exports will be added when the modules have public items.
 
 // Re-export core types from profile_room (Phase 2)
 pub use profile_room::{ProfileRoomConfig, ProfileRoomError, ProfileRoomService};

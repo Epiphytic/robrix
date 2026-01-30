@@ -437,7 +437,7 @@ impl SocialProfilePage {
 
         // Update username label
         self.label(ids!(username_label))
-            .set_text(cx, &profile.user_id.to_string());
+            .set_text(cx, profile.user_id.as_ref());
 
         // Update bio if available
         if let Some(ref social) = profile.social_profile {

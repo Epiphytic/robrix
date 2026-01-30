@@ -393,12 +393,12 @@ impl EventCardRef {
 fn format_event_time(start_ms: u64, end_ms: Option<u64>) -> String {
     use chrono::{DateTime, Utc};
 
-    let start = DateTime::from_timestamp_millis(start_ms as i64).unwrap_or_else(|| Utc::now());
+    let start = DateTime::from_timestamp_millis(start_ms as i64).unwrap_or_else(Utc::now);
 
     let start_str = start.format("%a, %b %d at %I:%M %p").to_string();
 
     if let Some(end) = end_ms {
-        let end_dt = DateTime::from_timestamp_millis(end as i64).unwrap_or_else(|| Utc::now());
+        let end_dt = DateTime::from_timestamp_millis(end as i64).unwrap_or_else(Utc::now);
 
         // If same day, just show end time
         if start.date_naive() == end_dt.date_naive() {

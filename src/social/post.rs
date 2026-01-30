@@ -75,7 +75,7 @@ impl Post {
             content: PostContent::Link {
                 url,
                 comment: None,
-                preview: None,
+                preview: Box::new(None),
             },
             targets: Vec::new(),
             privacy_levels: vec![FeedPrivacy::Public],
@@ -164,8 +164,8 @@ pub enum PostContent {
         url: url::Url,
         /// Optional comment about the link.
         comment: Option<String>,
-        /// Optional rich link preview data.
-        preview: Option<LinkPreview>,
+        /// Optional rich link preview data (boxed to reduce enum size).
+        preview: Box<Option<LinkPreview>>,
     },
 }
 

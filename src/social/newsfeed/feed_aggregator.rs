@@ -205,7 +205,7 @@ impl FeedAggregator {
     }
 
     /// Sort items according to the current sort order.
-    fn sort_items(&self, items: &mut Vec<FeedItem>) {
+    fn sort_items(&self, items: &mut [FeedItem]) {
         match self.sort_order {
             FeedSortOrder::Chronological => {
                 items.sort_by(|a, b| b.origin_server_ts.cmp(&a.origin_server_ts));
