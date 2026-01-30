@@ -1,0 +1,169 @@
+{
+  "project": "tillandsia-social-features",
+  "target_repo": "https://github.com/epiphytic/robrix.git",
+  "phases": {
+    "phase1": {
+      "name": "Foundation Infrastructure",
+      "status": "pending",
+      "dependencies": [],
+      "temp_dir": null,
+      "session_id": null,
+      "branch": "feature/social-phase1-foundation",
+      "files": [
+        "Cargo.toml",
+        "robrix-social-events/Cargo.toml",
+        "robrix-social-events/src/lib.rs",
+        "robrix-social-events/src/profile.rs",
+        "robrix-social-events/src/event.rs",
+        "robrix-social-events/src/rsvp.rs",
+        "robrix-social-events/src/link_preview.rs",
+        "robrix-social-events/src/caption.rs",
+        "src/social/mod.rs",
+        "src/social_dummy/mod.rs"
+      ]
+    },
+    "phase2": {
+      "name": "Profile Rooms",
+      "status": "pending",
+      "dependencies": [
+        "phase1"
+      ],
+      "temp_dir": null,
+      "session_id": null,
+      "branch": "feature/social-phase2-profiles",
+      "files": [
+        "src/social/profile_room.rs",
+        "src/social/widgets/profile_page.rs",
+        "src/social/widgets/mod.rs"
+      ]
+    },
+    "phase3": {
+      "name": "Posts and Feed Rooms",
+      "status": "pending",
+      "dependencies": [
+        "phase1",
+        "phase2"
+      ],
+      "temp_dir": null,
+      "session_id": null,
+      "branch": "feature/social-phase3-posts",
+      "files": [
+        "src/social/feed_room.rs",
+        "src/social/post.rs",
+        "src/social/broadcast.rs",
+        "src/social/widgets/post_composer.rs",
+        "src/social/widgets/post_card.rs"
+      ]
+    },
+    "phase4": {
+      "name": "Aggregated Newsfeed",
+      "status": "pending",
+      "dependencies": [
+        "phase3"
+      ],
+      "temp_dir": null,
+      "session_id": null,
+      "branch": "feature/social-phase4-newsfeed",
+      "files": [
+        "src/social/newsfeed/mod.rs",
+        "src/social/newsfeed/feed_aggregator.rs",
+        "src/social/newsfeed/feed_filter.rs",
+        "src/social/widgets/feed_view.rs"
+      ]
+    },
+    "phase5": {
+      "name": "Friend Network",
+      "status": "pending",
+      "dependencies": [
+        "phase1",
+        "phase3"
+      ],
+      "temp_dir": null,
+      "session_id": null,
+      "branch": "feature/social-phase5-friends",
+      "files": [
+        "src/social/friends/mod.rs",
+        "src/social/friends/friends_space.rs",
+        "src/social/friends/friend_request.rs",
+        "src/social/widgets/friend_list.rs"
+      ]
+    },
+    "phase6": {
+      "name": "Events/Gatherings",
+      "status": "pending",
+      "dependencies": [
+        "phase1",
+        "phase5"
+      ],
+      "temp_dir": null,
+      "session_id": null,
+      "branch": "feature/social-phase6-events",
+      "files": [
+        "src/social/events/mod.rs",
+        "src/social/events/event_room.rs",
+        "src/social/events/rsvp.rs",
+        "src/social/events/events_space.rs",
+        "src/social/events/polls.rs",
+        "src/social/widgets/event_card.rs"
+      ]
+    },
+    "phase7": {
+      "name": "Privacy and Security",
+      "status": "pending",
+      "dependencies": [
+        "phase3",
+        "phase5"
+      ],
+      "temp_dir": null,
+      "session_id": null,
+      "branch": "feature/social-phase7-privacy",
+      "files": [
+        "src/social/privacy/mod.rs",
+        "src/social/privacy/sharing_guard.rs",
+        "src/social/privacy/validation.rs"
+      ]
+    },
+    "phase8": {
+      "name": "CI/CD Pipelines",
+      "status": "pending",
+      "dependencies": [
+        "phase1"
+      ],
+      "temp_dir": null,
+      "session_id": null,
+      "branch": "feature/social-phase8-cicd",
+      "files": [
+        ".github/workflows/build-social.yml",
+        ".github/workflows/release-social.yml"
+      ]
+    },
+    "phase9": {
+      "name": "Testing Strategy",
+      "status": "pending",
+      "dependencies": [
+        "phase1",
+        "phase2",
+        "phase3",
+        "phase4",
+        "phase5",
+        "phase6",
+        "phase7"
+      ],
+      "temp_dir": null,
+      "session_id": null,
+      "branch": "feature/social-phase9-testing",
+      "files": [
+        "tests/social_integration/mod.rs",
+        "tests/social_integration/profile_tests.rs",
+        "tests/social_integration/feed_tests.rs",
+        "tests/social_integration/friend_tests.rs",
+        "tests/social_integration/event_tests.rs",
+        "tests/social_integration/privacy_tests.rs"
+      ]
+    }
+  },
+  "active_instances": {},
+  "completed_phases": [],
+  "current_main_commit": null,
+  "notes": "All PRs must go to https://github.com/epiphytic/robrix.git - NEVER to upstream"
+}

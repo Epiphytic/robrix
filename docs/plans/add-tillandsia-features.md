@@ -842,6 +842,18 @@ pub enum PostContent {
         thumbnail_uri: Option<OwnedMxcUri>,
         duration_ms: Option<u64>,
     },
+    /// File attachment
+    File {
+        mxc_uri: OwnedMxcUri,
+        body: String, // Filename
+        info: Option<Box<serde_json::Value>>, // FileInfo
+    },
+    /// Location sharing
+    Location {
+        body: String, // "Location: Lat, Long" or description
+        geo_uri: String,
+        info: Option<Box<serde_json::Value>>, // LocationInfo
+    },
     /// Link share with preview
     Link {
         url: url::Url,
@@ -879,6 +891,20 @@ impl PostContent {
                 // Add social caption extension
                 // content.custom.insert("org.social.caption", caption);
                 RoomMessageEventContent::new(MessageType::Image(content))
+            }
+            Self::File { mxc_uri, body, .. } => {
+                let content = ruma::events::room::message::FileMessageEventContent::plain(
+                    body.clone(),
+                    mxc_uri.clone(),
+                );
+                RoomMessageEventContent::new(MessageType::File(content))
+            }
+            Self::Location { body, geo_uri, .. } => {
+                let content = ruma::events::room::message::LocationMessageEventContent::new(
+                    body.clone(),
+                    geo_uri.clone(),
+                );
+                RoomMessageEventContent::new(MessageType::Location(content))
             }
             // ... other content types
             _ => todo!("Implement other post types"),
@@ -1028,6 +1054,69 @@ pub enum AttachedMedia {
 }
 
 // Widget implementation...
+```
+
+### 3.4 Broadcast Mode Service (Hidden Friends)
+
+**File**: `src/social/broadcast.rs`
+
+```rust
+//! Broadcast mode for high-privacy sharing.
+//!
+//! Sends posts individually as Direct Messages to a hidden list of recipients.
+//! This avoids creating a visible member list (like in a room) and maximizes privacy.
+
+use matrix_sdk::{
+    room::Room,
+    ruma::{
+        events::room::message::RoomMessageEventContent,
+        OwnedRoomId, OwnedUserId,
+    },
+    Client,
+};
+
+/// Service for broadcast messaging
+pub struct BroadcastService {
+    client: Client,
+}
+
+impl BroadcastService {
+    /// Send a post to a list of recipients as individual DMs
+    pub async fn broadcast_post(
+        &self,
+        post_content: RoomMessageEventContent,
+        recipients: &[OwnedUserId],
+    ) -> Result<Vec<OwnedEventId>, BroadcastError> {
+        let mut event_ids = Vec::new();
+
+        for user_id in recipients {
+            // Find or create DM room
+            let room_id = self.get_or_create_dm(user_id).await?;
+            let room = self.client.get_room(&room_id)
+                .ok_or(BroadcastError::RoomNotFound)?;
+
+            let response = room.send(post_content.clone()).await
+                .map_err(BroadcastError::MatrixError)?;
+            
+            event_ids.push(response.event_id);
+        }
+
+        Ok(event_ids)
+    }
+
+    async fn get_or_create_dm(&self, user_id: &UserId) -> Result<OwnedRoomId, BroadcastError> {
+        // Implementation to find existing DM or create new one
+        todo!("Implement DM lookup/creation")
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum BroadcastError {
+    #[error("Room not found")]
+    RoomNotFound,
+    #[error("Matrix error: {0}")]
+    MatrixError(#[from] matrix_sdk::Error),
+}
 ```
 
 ---
@@ -1795,6 +1884,102 @@ pub struct RsvpCounts {
     pub interested: u32,
     pub not_going: u32,
     pub total_guests: u32,
+}
+```
+
+### 6.3 Events Space Service
+
+**File**: `src/social/events/events_space.rs`
+
+```rust
+//! Events space management.
+//!
+//! A dedicated space to organize all events created or joined by the user.
+
+use matrix_sdk::{
+    room::Room,
+    ruma::{
+        events::space::child::SpaceChildEventContent,
+        OwnedRoomId,
+    },
+    Client,
+};
+
+pub struct EventsSpaceService {
+    client: Client,
+    space_id: Option<OwnedRoomId>,
+}
+
+impl EventsSpaceService {
+    /// Add an event room to the user's event space
+    pub async fn add_event(&mut self, event_room_id: &RoomId) -> Result<(), EventSpaceError> {
+        let space_id = self.get_or_create_events_space().await?;
+        let space = self.client.get_room(&space_id)
+            .ok_or(EventSpaceError::SpaceNotFound)?;
+
+        let content = SpaceChildEventContent::new(vec![]);
+        space.send_state_event_for_key(event_room_id.to_owned(), content).await
+            .map_err(EventSpaceError::MatrixError)?;
+
+        Ok(())
+    }
+
+    async fn get_or_create_events_space(&mut self) -> Result<OwnedRoomId, EventSpaceError> {
+        // Implementation similar to Friends Space
+        todo!("Implement events space creation")
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum EventSpaceError {
+    #[error("Space not found")]
+    SpaceNotFound,
+    #[error("Matrix error: {0}")]
+    MatrixError(#[from] matrix_sdk::Error),
+}
+```
+
+### 6.4 Event Features (Polls)
+
+**File**: `src/social/events/polls.rs`
+
+```rust
+//! Polls support for events (e.g., "What should we bring?").
+//!
+//! Uses MSC3381 / Matrix v1.7+ polls.
+
+use matrix_sdk::{
+    ruma::events::poll::start::PollStartEventContent,
+    Client,
+};
+
+pub struct PollService {
+    client: Client,
+}
+
+impl PollService {
+    pub async fn create_poll(
+        &self,
+        room_id: &RoomId,
+        question: String,
+        answers: Vec<String>,
+    ) -> Result<(), PollError> {
+        let room = self.client.get_room(room_id)
+            .ok_or(PollError::RoomNotFound)?;
+
+        let content = PollStartEventContent::with_plain_text(question, answers);
+        room.send(content).await.map_err(PollError::MatrixError)?;
+        
+        Ok(())
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum PollError {
+    #[error("Room not found")]
+    RoomNotFound,
+    #[error("Matrix error: {0}")]
+    MatrixError(#[from] matrix_sdk::Error),
 }
 ```
 
