@@ -42,6 +42,12 @@ pub use widgets::feed_view::{FeedState, SocialFeedView, SocialFeedViewAction};
 pub use widgets::post_card::{LinkPreviewData, PostCardData, SocialPostCard, SocialPostCardAction};
 pub use widgets::post_composer::{AttachedMedia, SocialPostComposer, SocialPostComposerAction};
 
+// Re-export newsfeed types (Phase 4)
+pub use newsfeed::{
+    create_feed_sync_filter, ContentFilter, FeedAggregator, FeedError, FeedFilterSettings,
+    FeedItem, FeedSortOrder,
+};
+
 /// Register all social feature UI components.
 pub fn live_design(cx: &mut Cx) {
     // Register all widget designs
