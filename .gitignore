@@ -16,3 +16,8 @@ proxychains.conf
 .claude/
 .swarm/
 .mcp.json
+
+# GitHub Actions self-hosted runner
+actions-runner*/
+_work/
+*.runner.pid

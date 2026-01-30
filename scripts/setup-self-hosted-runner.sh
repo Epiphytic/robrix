@@ -2,20 +2,26 @@
 #
 # Self-Hosted GitHub Actions Runner Setup Script
 # ==============================================
-# This script configures a self-hosted runner for the robrix repository.
-# Use self-hosted runners for expensive operations like multi-platform builds and releases.
+# This script configures and manages a self-hosted runner for the robrix repository.
+# It is idempotent - running it multiple times will only perform necessary actions.
 #
 # Usage:
-#   ./scripts/setup-self-hosted-runner.sh [OPTIONS]
+#   ./scripts/setup-self-hosted-runner.sh [OPTIONS] [COMMAND]
+#
+# Commands:
+#   setup              Install and configure the runner (default)
+#   start              Start the runner if not running
+#   stop               Stop the runner
+#   status             Check runner status
+#   restart            Stop and start the runner
+#   uninstall          Remove the runner completely
 #
 # Options:
 #   --name NAME        Runner name (default: robrix-runner-<hostname>)
-#   --labels LABELS    Comma-separated labels (default: self-hosted,robrix,linux,arm64)
+#   --labels LABELS    Comma-separated labels (default: auto-detected)
 #   --work-dir DIR     Work directory (default: _work)
 #   --token TOKEN      Runner registration token (auto-fetched via gh if not provided)
 #   --repo OWNER/REPO  Repository (default: epiphytic/robrix)
-#   --replace          Replace existing runner with same name
-#   --unattended       Run setup without prompts
 #   --help             Show this help message
 #
 # Prerequisites:
@@ -26,8 +32,8 @@
 # The script will automatically:
 #   1. Detect your platform (OS and architecture)
 #   2. Generate a runner registration token via gh CLI
-#   3. Download and configure the GitHub Actions runner
-#   4. Set up appropriate labels for the runner
+#   3. Download and configure the GitHub Actions runner (if not already done)
+#   4. Start the runner (if not already running)
 #
 
 set -euo pipefail
@@ -40,11 +46,14 @@ REPO="${GITHUB_RUNNER_REPO:-epiphytic/robrix}"
 REPO_URL="https://github.com/${REPO}"
 RUNNER_VERSION="${GITHUB_RUNNER_VERSION:-2.321.0}"
 RUNNER_NAME="${GITHUB_RUNNER_NAME:-robrix-runner-$(hostname -s)}"
-RUNNER_LABELS="${GITHUB_RUNNER_LABELS:-}" # Will be auto-set based on platform
+RUNNER_LABELS="${GITHUB_RUNNER_LABELS:-}"
 RUNNER_WORK_DIR="${GITHUB_RUNNER_WORK_DIR:-_work}"
 RUNNER_TOKEN="${GITHUB_RUNNER_TOKEN:-}"
-REPLACE_EXISTING=false
-UNATTENDED=false
+
+# Derived paths
+RUNNER_BASE_DIR="${HOME}/actions-runner-${RUNNER_NAME}"
+PID_FILE="${RUNNER_BASE_DIR}/.runner.pid"
+CONFIG_FILE="${RUNNER_BASE_DIR}/.runner"
 
 # Colors for output
 RED='\033[0;31m'
@@ -74,7 +83,7 @@ log_error() {
 }
 
 show_help() {
-	head -35 "$0" | tail -30 | sed 's/^#//' | sed 's/^ //'
+	head -40 "$0" | tail -35 | sed 's/^#//' | sed 's/^ //'
 	exit 0
 }
 
@@ -91,7 +100,6 @@ check_gh_cli() {
 		exit 1
 	fi
 
-	# Check if authenticated
 	if ! gh auth status &>/dev/null; then
 		log_error "GitHub CLI is not authenticated."
 		echo ""
@@ -146,7 +154,6 @@ get_runner_token() {
 		exit 1
 	fi
 
-	# Return token without any trailing whitespace
 	printf '%s' "$token"
 }
 
@@ -154,30 +161,351 @@ generate_labels() {
 	local os="$1"
 	local arch="$2"
 
-	# Base labels
 	local labels="self-hosted,robrix"
 
-	# Add OS label
 	case "$os" in
 	linux) labels="${labels},linux" ;;
 	osx) labels="${labels},macos" ;;
 	win) labels="${labels},windows" ;;
 	esac
 
-	# Add architecture label
 	labels="${labels},${arch}"
-
 	echo "$labels"
+}
+
+# ============================================================================
+# Process Management Functions
+# ============================================================================
+
+# Check if a process is running by PID
+is_process_running() {
+	local pid="$1"
+	if [[ -z "$pid" ]]; then
+		return 1
+	fi
+
+	# Check if process exists and is our runner
+	if kill -0 "$pid" 2>/dev/null; then
+		# Verify it's actually the runner process, not a recycled PID
+		if [[ "$(detect_os)" == "osx" ]]; then
+			ps -p "$pid" -o command= 2>/dev/null | grep -q "Runner.Listener" && return 0
+		else
+			ps -p "$pid" -o cmd= 2>/dev/null | grep -q "Runner.Listener" && return 0
+		fi
+	fi
+	return 1
+}
+
+# Get the PID of a running runner
+get_runner_pid() {
+	# First check PID file
+	if [[ -f "$PID_FILE" ]]; then
+		local pid
+		pid=$(cat "$PID_FILE" 2>/dev/null | tr -d '\n\r')
+		if is_process_running "$pid"; then
+			echo "$pid"
+			return 0
+		fi
+		# Stale PID file - remove it
+		rm -f "$PID_FILE"
+	fi
+
+	# Fallback: search for running runner process
+	local pid
+	if [[ "$(detect_os)" == "osx" ]]; then
+		pid=$(pgrep -f "Runner.Listener.*${RUNNER_NAME}" 2>/dev/null | head -1)
+	else
+		pid=$(pgrep -f "Runner.Listener.*${RUNNER_NAME}" 2>/dev/null | head -1)
+	fi
+
+	if [[ -n "$pid" ]] && is_process_running "$pid"; then
+		# Update PID file
+		echo "$pid" >"$PID_FILE"
+		echo "$pid"
+		return 0
+	fi
+
+	return 1
+}
+
+# Check if runner is configured
+is_runner_configured() {
+	[[ -f "$CONFIG_FILE" ]]
+}
+
+# Check if runner binaries are installed
+is_runner_installed() {
+	[[ -f "${RUNNER_BASE_DIR}/run.sh" ]] && [[ -f "${RUNNER_BASE_DIR}/config.sh" ]]
+}
+
+# ============================================================================
+# Runner Commands
+# ============================================================================
+
+cmd_status() {
+	echo "Runner: ${RUNNER_NAME}"
+	echo "Directory: ${RUNNER_BASE_DIR}"
+	echo ""
+
+	if ! is_runner_installed; then
+		echo "Status: NOT INSTALLED"
+		return 1
+	fi
+
+	if ! is_runner_configured; then
+		echo "Status: INSTALLED but NOT CONFIGURED"
+		return 1
+	fi
+
+	local pid
+	if pid=$(get_runner_pid); then
+		echo -e "Status: ${GREEN}RUNNING${NC} (PID: $pid)"
+		return 0
+	else
+		echo -e "Status: ${YELLOW}STOPPED${NC}"
+		return 1
+	fi
+}
+
+cmd_start() {
+	if ! is_runner_installed; then
+		log_error "Runner is not installed. Run setup first."
+		return 1
+	fi
+
+	if ! is_runner_configured; then
+		log_error "Runner is not configured. Run setup first."
+		return 1
+	fi
+
+	# Check if already running
+	local existing_pid
+	if existing_pid=$(get_runner_pid); then
+		log_warn "Runner is already running (PID: $existing_pid)"
+		return 0
+	fi
+
+	# Clean up any stale PID file
+	rm -f "$PID_FILE"
+
+	log_info "Starting runner..."
+	cd "$RUNNER_BASE_DIR"
+
+	# Start runner in background
+	nohup ./run.sh >"${RUNNER_BASE_DIR}/runner.log" 2>&1 &
+	local pid=$!
+
+	# Wait a moment for the runner to start
+	sleep 2
+
+	# Verify it started
+	if is_process_running "$pid"; then
+		echo "$pid" >"$PID_FILE"
+		log_success "Runner started (PID: $pid)"
+		echo "Log file: ${RUNNER_BASE_DIR}/runner.log"
+		return 0
+	else
+		log_error "Runner failed to start. Check ${RUNNER_BASE_DIR}/runner.log"
+		return 1
+	fi
+}
+
+cmd_stop() {
+	local pid
+	if ! pid=$(get_runner_pid); then
+		log_warn "Runner is not running"
+		rm -f "$PID_FILE"
+		return 0
+	fi
+
+	log_info "Stopping runner (PID: $pid)..."
+
+	# Send SIGTERM first for graceful shutdown
+	kill -TERM "$pid" 2>/dev/null || true
+
+	# Wait up to 10 seconds for graceful shutdown
+	local count=0
+	while is_process_running "$pid" && [[ $count -lt 10 ]]; do
+		sleep 1
+		((count++))
+	done
+
+	# Force kill if still running
+	if is_process_running "$pid"; then
+		log_warn "Runner didn't stop gracefully, forcing..."
+		kill -9 "$pid" 2>/dev/null || true
+		sleep 1
+	fi
+
+	rm -f "$PID_FILE"
+
+	if is_process_running "$pid"; then
+		log_error "Failed to stop runner"
+		return 1
+	else
+		log_success "Runner stopped"
+		return 0
+	fi
+}
+
+cmd_restart() {
+	cmd_stop
+	sleep 1
+	cmd_start
+}
+
+cmd_uninstall() {
+	log_info "Uninstalling runner..."
+
+	# Stop if running
+	cmd_stop || true
+
+	if [[ -d "$RUNNER_BASE_DIR" ]]; then
+		# Try to unconfigure first
+		if is_runner_configured; then
+			log_info "Removing runner configuration..."
+			check_gh_cli
+			local token
+			token=$(gh api "repos/${REPO}/actions/runners/remove-token" -X POST --jq '.token' 2>/dev/null | tr -d '\n\r')
+			if [[ -n "$token" ]]; then
+				cd "$RUNNER_BASE_DIR"
+				./config.sh remove --token "$token" 2>/dev/null || true
+			fi
+		fi
+
+		log_info "Removing runner directory..."
+		rm -rf "$RUNNER_BASE_DIR"
+	fi
+
+	log_success "Runner uninstalled"
+}
+
+cmd_setup() {
+	local os arch
+	os=$(detect_os)
+	arch=$(detect_arch)
+
+	if [[ "$os" == "unknown" ]]; then
+		log_error "Unsupported operating system"
+		exit 1
+	fi
+
+	log_info "GitHub Actions Self-Hosted Runner Setup"
+	log_info "========================================"
+	log_info "Detected platform: ${os}-${arch}"
+	log_info "Repository: ${REPO}"
+	log_info "Runner name: ${RUNNER_NAME}"
+
+	# Auto-generate labels if not provided
+	if [[ -z "$RUNNER_LABELS" ]]; then
+		RUNNER_LABELS=$(generate_labels "$os" "$arch")
+	fi
+	log_info "Runner labels: ${RUNNER_LABELS}"
+
+	# Check if already fully set up and running
+	if is_runner_installed && is_runner_configured; then
+		local pid
+		if pid=$(get_runner_pid); then
+			log_success "Runner is already configured and running (PID: $pid)"
+			return 0
+		else
+			log_info "Runner is configured but not running. Starting..."
+			cmd_start
+			return $?
+		fi
+	fi
+
+	# Install if needed
+	if ! is_runner_installed; then
+		install_runner "$os" "$arch"
+	else
+		log_info "Runner binaries already installed"
+	fi
+
+	# Configure if needed
+	if ! is_runner_configured; then
+		configure_runner
+	else
+		log_info "Runner already configured"
+	fi
+
+	# Start if not running
+	local pid
+	if ! pid=$(get_runner_pid); then
+		cmd_start
+	else
+		log_success "Runner is already running (PID: $pid)"
+	fi
+}
+
+install_runner() {
+	local os="$1"
+	local arch="$2"
+
+	log_info "Installing runner..."
+
+	mkdir -p "$RUNNER_BASE_DIR"
+	cd "$RUNNER_BASE_DIR"
+
+	local runner_url
+	runner_url=$(get_runner_url "$os" "$arch" "$RUNNER_VERSION")
+	local runner_archive="actions-runner.tar.gz"
+
+	if [[ "$os" == "win" ]]; then
+		runner_archive="actions-runner.zip"
+	fi
+
+	log_info "Downloading runner from: ${runner_url}"
+	curl -fsSL -o "$runner_archive" "$runner_url"
+
+	log_info "Extracting runner..."
+	if [[ "$os" == "win" ]]; then
+		unzip -q "$runner_archive"
+	else
+		tar xzf "$runner_archive"
+	fi
+	rm "$runner_archive"
+
+	log_success "Runner binaries installed"
+}
+
+configure_runner() {
+	log_info "Configuring runner..."
+
+	# Get token if not provided
+	if [[ -z "$RUNNER_TOKEN" ]]; then
+		check_gh_cli
+		RUNNER_TOKEN=$(get_runner_token)
+		log_success "Runner token obtained"
+	fi
+
+	cd "$RUNNER_BASE_DIR"
+
+	./config.sh \
+		--url "$REPO_URL" \
+		--token "$RUNNER_TOKEN" \
+		--name "$RUNNER_NAME" \
+		--labels "$RUNNER_LABELS" \
+		--work "$RUNNER_WORK_DIR" \
+		--unattended \
+		--replace
+
+	log_success "Runner configured"
 }
 
 # ============================================================================
 # Parse Arguments
 # ============================================================================
 
+COMMAND="setup"
+
 while [[ $# -gt 0 ]]; do
 	case $1 in
 	--name)
 		RUNNER_NAME="$2"
+		RUNNER_BASE_DIR="${HOME}/actions-runner-${RUNNER_NAME}"
+		PID_FILE="${RUNNER_BASE_DIR}/.runner.pid"
+		CONFIG_FILE="${RUNNER_BASE_DIR}/.runner"
 		shift 2
 		;;
 	--labels)
@@ -197,16 +525,12 @@ while [[ $# -gt 0 ]]; do
 		REPO_URL="https://github.com/${REPO}"
 		shift 2
 		;;
-	--replace)
-		REPLACE_EXISTING=true
-		shift
-		;;
-	--unattended)
-		UNATTENDED=true
-		shift
-		;;
 	--help | -h)
 		show_help
+		;;
+	setup | start | stop | status | restart | uninstall)
+		COMMAND="$1"
+		shift
 		;;
 	*)
 		log_error "Unknown option: $1"
@@ -216,136 +540,30 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ============================================================================
-# Main Setup
+# Main
 # ============================================================================
 
-main() {
-	log_info "GitHub Actions Self-Hosted Runner Setup"
-	log_info "========================================"
-
-	# Detect platform
-	local os arch
-	os=$(detect_os)
-	arch=$(detect_arch)
-
-	if [[ "$os" == "unknown" ]]; then
-		log_error "Unsupported operating system"
-		exit 1
-	fi
-
-	log_info "Detected platform: ${os}-${arch}"
-	log_info "Repository: ${REPO}"
-
-	# Auto-generate labels if not provided
-	if [[ -z "$RUNNER_LABELS" ]]; then
-		RUNNER_LABELS=$(generate_labels "$os" "$arch")
-	fi
-
-	log_info "Runner name: ${RUNNER_NAME}"
-	log_info "Runner labels: ${RUNNER_LABELS}"
-
-	# Get token via gh CLI if not provided
-	if [[ -z "$RUNNER_TOKEN" ]]; then
-		check_gh_cli
-		RUNNER_TOKEN=$(get_runner_token)
-		log_success "Runner token obtained successfully"
-	fi
-
-	# Create runner directory
-	local runner_dir="${HOME}/actions-runner-${RUNNER_NAME}"
-
-	if [[ -d "$runner_dir" ]]; then
-		if [[ "$REPLACE_EXISTING" == true ]]; then
-			log_warn "Removing existing runner directory: ${runner_dir}"
-			rm -rf "$runner_dir"
-		else
-			log_error "Runner directory already exists: ${runner_dir}"
-			log_error "Use --replace to remove and recreate"
-			exit 1
-		fi
-	fi
-
-	mkdir -p "$runner_dir"
-	cd "$runner_dir"
-
-	# Download runner
-	local runner_url
-	runner_url=$(get_runner_url "$os" "$arch" "$RUNNER_VERSION")
-	local runner_archive="actions-runner.tar.gz"
-
-	if [[ "$os" == "win" ]]; then
-		runner_archive="actions-runner.zip"
-	fi
-
-	log_info "Downloading runner from: ${runner_url}"
-	curl -fsSL -o "$runner_archive" "$runner_url"
-
-	# Extract runner
-	log_info "Extracting runner..."
-	if [[ "$os" == "win" ]]; then
-		unzip -q "$runner_archive"
-	else
-		tar xzf "$runner_archive"
-	fi
-	rm "$runner_archive"
-
-	# Configure runner
-	log_info "Configuring runner..."
-
-	local config_args=(
-		--url "$REPO_URL"
-		--token "$RUNNER_TOKEN"
-		--name "$RUNNER_NAME"
-		--labels "$RUNNER_LABELS"
-		--work "$RUNNER_WORK_DIR"
-	)
-
-	if [[ "$REPLACE_EXISTING" == true ]]; then
-		config_args+=(--replace)
-	fi
-
-	if [[ "$UNATTENDED" == true ]]; then
-		config_args+=(--unattended)
-	fi
-
-	./config.sh "${config_args[@]}"
-
-	log_success "Runner configured successfully!"
-	echo ""
-	log_info "Runner directory: ${runner_dir}"
-	echo ""
-
-	# Print start instructions
-	echo "=========================================="
-	echo "To start the runner:"
-	echo ""
-	echo "  Interactive mode:"
-	echo "    cd ${runner_dir}"
-	echo "    ./run.sh"
-	echo ""
-	echo "  As a service (Linux/macOS):"
-	echo "    cd ${runner_dir}"
-	echo "    sudo ./svc.sh install"
-	echo "    sudo ./svc.sh start"
-	echo ""
-	echo "  To check service status:"
-	echo "    sudo ./svc.sh status"
-	echo ""
-	echo "  To uninstall:"
-	echo "    sudo ./svc.sh stop"
-	echo "    sudo ./svc.sh uninstall"
-	echo "    ./config.sh remove --token \$(gh api repos/${REPO}/actions/runners/remove-token -X POST --jq '.token')"
-	echo "=========================================="
-
-	# Optionally start the runner
-	if [[ "$UNATTENDED" == false ]]; then
-		echo ""
-		read -rp "Start runner now? (y/N): " start_now
-		if [[ "$start_now" =~ ^[Yy]$ ]]; then
-			log_info "Starting runner..."
-			./run.sh
-		fi
-	fi
-}
-
-main "$@"
+case "$COMMAND" in
+setup)
+	cmd_setup
+	;;
+start)
+	cmd_start
+	;;
+stop)
+	cmd_stop
+	;;
+status)
+	cmd_status
+	;;
+restart)
+	cmd_restart
+	;;
+uninstall)
+	cmd_uninstall
+	;;
+*)
+	log_error "Unknown command: $COMMAND"
+	exit 1
+	;;
+esac
