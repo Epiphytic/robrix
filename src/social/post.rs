@@ -75,7 +75,7 @@ impl Post {
             content: PostContent::Link {
                 url,
                 comment: None,
-                preview: None,
+                preview: Box::new(None),
             },
             targets: Vec::new(),
             privacy_levels: vec![FeedPrivacy::Public],
@@ -164,8 +164,8 @@ pub enum PostContent {
         url: url::Url,
         /// Optional comment about the link.
         comment: Option<String>,
-        /// Optional rich link preview data.
-        preview: Option<LinkPreview>,
+        /// Optional rich link preview data (boxed to reduce enum size).
+        preview: Box<Option<LinkPreview>>,
     },
 }
 
@@ -230,7 +230,7 @@ impl PostContent {
                 };
 
                 // Generate HTML with link preview if available
-                let html = if let Some(preview) = preview {
+                let html = if let Some(preview) = &**preview {
                     let mut html = String::new();
                     if let Some(comment) = comment {
                         html.push_str(&format!("<p>{}</p>", htmlize::escape_text(comment)));
@@ -419,7 +419,7 @@ mod tests {
 
     #[test]
     fn test_image_post_with_caption() {
-        let mxc: OwnedMxcUri = "mxc://example.org/abc123".try_into().unwrap();
+        let mxc: OwnedMxcUri = "mxc://example.org/abc123".into();
         let post = Post::image(mxc, 800, 600).with_caption("A nice photo");
         assert!(matches!(
             post.content,

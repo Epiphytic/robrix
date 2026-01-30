@@ -431,6 +431,7 @@ pub enum SocialPostCardAction {
 #[derive(Clone, Debug)]
 struct ReactionButtonData {
     emoji: String,
+    #[allow(dead_code)] // Reserved for future use in reaction toggle UI
     is_selected: bool,
 }
 

@@ -1,13 +1,24 @@
 //! Widgets and types related to displaying info about a user profile.
 
-use std::{borrow::Cow, ops::{Deref, DerefMut}};
+use std::{
+    borrow::Cow,
+    ops::{Deref, DerefMut},
+};
 use makepad_widgets::*;
-use matrix_sdk::{room::{RoomMember, RoomMemberRole}, ruma::{events::room::member::MembershipState, OwnedRoomId, OwnedUserId}};
+use matrix_sdk::{
+    room::{RoomMember, RoomMemberRole},
+    ruma::{events::room::member::MembershipState, OwnedRoomId, OwnedUserId},
+};
 use crate::{
-    avatar_cache::{self, AvatarCacheEntry}, shared::{avatar::{AvatarState, AvatarWidgetExt}, popup_list::{PopupItem, PopupKind, enqueue_popup_notification}}, sliding_sync::{MatrixRequest, current_user_id, is_user_ignored, submit_async_request}, utils
+    avatar_cache::{self, AvatarCacheEntry},
+    shared::{
+        avatar::{AvatarState, AvatarWidgetExt},
+        popup_list::{PopupItem, PopupKind, enqueue_popup_notification},
+    },
+    sliding_sync::{MatrixRequest, current_user_id, is_user_ignored, submit_async_request},
+    utils,
 };
 use super::user_profile_cache;
-
 
 /// Information retrieved about a user: their displayable name, ID, and known avatar state.
 #[derive(Clone, Debug)]
@@ -34,13 +45,13 @@ impl UserProfile {
     /// skipping any leading "@" characters.
     #[allow(unused)]
     pub fn first_letter(&self) -> &str {
-        self.username.as_deref()
+        self.username
+            .as_deref()
             .and_then(|un| utils::user_name_first_letter(un))
             .or_else(|| utils::user_name_first_letter(self.user_id.as_str()))
             .unwrap_or_default()
     }
 }
-
 
 /// Basic info needed to populate the contents of an avatar widget.
 #[derive(Clone, Debug)]
@@ -126,7 +137,7 @@ live_design! {
         }
 
         <LineH> { padding: 15 }
-        
+
         membership = <View> {
             width: Fill,
             height: Fit,
@@ -338,7 +349,6 @@ live_design! {
     }
 }
 
-
 #[derive(Clone, DefaultNone, Debug)]
 pub enum ShowUserProfileAction {
     ShowUserProfile(UserProfileAndRoomId),
@@ -373,46 +383,52 @@ impl UserProfilePaneInfo {
     }
 
     fn membership_status(&self) -> &str {
-        self.room_member.as_ref().map_or(
-            "Not a Member",
-            |member| match member.membership() {
+        self.room_member
+            .as_ref()
+            .map_or("Not a Member", |member| match member.membership() {
                 MembershipState::Join => "Status: Joined",
                 MembershipState::Leave => "Status: Left",
                 MembershipState::Ban => "Status: Banned",
                 MembershipState::Invite => "Status: Invited",
                 MembershipState::Knock => "Status: Knocking",
                 _ => "Status: Unknown",
-            }
-        )
+            })
     }
 
     fn role_in_room(&self) -> Cow<'_, str> {
-        self.room_member.as_ref().map_or(
-            "Role: Unknown".into(),
-            |member| match member.suggested_role_for_power_level() {
-                RoomMemberRole::Creator => "Role: Creator".into(),
-                RoomMemberRole::Administrator => "Role: Admin".into(),
-                RoomMemberRole::Moderator => "Role: Moderator".into(),
-                RoomMemberRole::User => "Role: Standard User".into(),
-            }
-        )
+        self.room_member
+            .as_ref()
+            .map_or("Role: Unknown".into(), |member| {
+                match member.suggested_role_for_power_level() {
+                    RoomMemberRole::Creator => "Role: Creator".into(),
+                    RoomMemberRole::Administrator => "Role: Admin".into(),
+                    RoomMemberRole::Moderator => "Role: Moderator".into(),
+                    RoomMemberRole::User => "Role: Standard User".into(),
+                }
+            })
     }
 }
 
 #[derive(Live, LiveHook, Widget)]
 pub struct UserProfileSlidingPane {
-    #[deref] view: View,
-    #[animator] animator: Animator,
+    #[deref]
+    view: View,
+    #[animator]
+    animator: Animator,
 
-    #[rust] info: Option<UserProfilePaneInfo>,
-    #[rust] is_animating_out: bool,
+    #[rust]
+    info: Option<UserProfilePaneInfo>,
+    #[rust]
+    is_animating_out: bool,
 }
 
 impl Widget for UserProfileSlidingPane {
     fn handle_event(&mut self, cx: &mut Cx, event: &Event, scope: &mut Scope) {
         self.view.handle_event(cx, event, scope);
 
-        if !self.visible { return; }
+        if !self.visible {
+            return;
+        }
 
         let animator_action = self.animator_handle_event(cx, event);
         if animator_action.must_redraw() {
@@ -432,7 +448,7 @@ impl Widget for UserProfileSlidingPane {
                 (false, true) => {
                     self.is_animating_out = true;
                 }
-                _ => { }
+                _ => {}
             }
         }
 
@@ -448,20 +464,23 @@ impl Widget for UserProfileSlidingPane {
             matches!(
                 event,
                 Event::Actions(actions) if self.button(ids!(close_button)).clicked(actions)
-            )
-            || event.back_pressed()
-            || match event.hits_with_capture_overload(cx, area, true) {
-                Hit::KeyUp(key) => key.key_code == KeyCode::Escape,
-                Hit::FingerDown(_fde) => {
-                    cx.set_key_focus(area);
-                    false
+            ) || event.back_pressed()
+                || match event.hits_with_capture_overload(cx, area, true) {
+                    Hit::KeyUp(key) => key.key_code == KeyCode::Escape,
+                    Hit::FingerDown(_fde) => {
+                        cx.set_key_focus(area);
+                        false
+                    }
+                    Hit::FingerUp(fue) if fue.is_over => {
+                        fue.mouse_button().is_some_and(|b| b.is_back())
+                            || !self
+                                .view(ids!(main_content))
+                                .area()
+                                .rect(cx)
+                                .contains(fue.abs)
+                    }
+                    _ => false,
                 }
-                Hit::FingerUp(fue) if fue.is_over => {
-                    fue.mouse_button().is_some_and(|b| b.is_back())
-                    || !self.view(ids!(main_content)).area().rect(cx).contains(fue.abs)
-                }
-                _ => false,
-            }
         };
         if close_pane {
             self.animator_play(cx, ids!(panel.hide));
@@ -482,32 +501,36 @@ impl Widget for UserProfileSlidingPane {
                     our_info.user_id.clone(),
                     Some(&our_info.room_id),
                     false,
-                    |profile, rooms| (profile.clone(), rooms.get(&our_info.room_id).cloned())
+                    |profile, rooms| (profile.clone(), rooms.get(&our_info.room_id).cloned()),
                 ) {
                     let prev_avatar_state = our_info.avatar_state.clone();
                     our_info.user_profile = new_profile;
                     our_info.room_member = room_member;
                     // Use the avatar URI from the `room_member`, as it will be the most up-to-date
                     // and specific to the room that this user profile sliding pane is currently being shown for.
-                    if let Some(avatar_uri) = our_info.room_member.as_ref()
+                    if let Some(avatar_uri) = our_info
+                        .room_member
+                        .as_ref()
                         .and_then(|rm| rm.avatar_url().map(|u| u.to_owned()))
                     {
                         our_info.avatar_state = AvatarState::Known(Some(avatar_uri));
                     }
                     // If we know the avatar URI, try to get/fetch the actual avatar image data.
                     if let AvatarState::Known(Some(uri)) = &our_info.avatar_state {
-                        if let AvatarCacheEntry::Loaded(data) = avatar_cache::get_or_fetch_avatar(cx, uri.to_owned()) {
+                        if let AvatarCacheEntry::Loaded(data) =
+                            avatar_cache::get_or_fetch_avatar(cx, uri.to_owned())
+                        {
                             our_info.avatar_state = AvatarState::Loaded(data);
                         }
                     }
                     // If the new avatar state is fully `Loaded`, keep it as is.
                     // If the new avatar state is *not* fully `Loaded`, but the previous one was, keep the previous one.
                     match (prev_avatar_state, &mut our_info.avatar_state) {
-                        (_,                             AvatarState::Loaded(_)) => { }
-                        (prev @ AvatarState::Loaded(_), existing_avatar_state ) => {
+                        (_, AvatarState::Loaded(_)) => {}
+                        (prev @ AvatarState::Loaded(_), existing_avatar_state) => {
                             *existing_avatar_state = prev;
                         }
-                        _ => { }
+                        _ => {}
                     }
                     redraw_this_pane = true;
                 }
@@ -517,10 +540,11 @@ impl Widget for UserProfileSlidingPane {
             }
         }
 
-        let Some(info) = self.info.as_ref() else { return };
+        let Some(info) = self.info.as_ref() else {
+            return;
+        };
 
         if let Event::Actions(actions) = event {
-
             // TODO: handle actions for the `direct_message_button`
 
             if self.button(ids!(copy_link_to_user_button)).clicked(actions) {
@@ -529,7 +553,7 @@ impl Widget for UserProfileSlidingPane {
                 enqueue_popup_notification(PopupItem {
                     message: String::from("Copied User ID to the clipboard."),
                     auto_dismissal_duration: Some(3.0),
-                    kind: PopupKind::Success
+                    kind: PopupKind::Success,
                 });
             }
 
@@ -545,7 +569,8 @@ impl Widget for UserProfileSlidingPane {
                         room_id: info.room_id.clone(),
                         room_member: room_member.clone(),
                     });
-                    log!("Submitting request to {}ignore user {}.",
+                    log!(
+                        "Submitting request to {}ignore user {}.",
                         if room_member.is_ignored() { "un" } else { "" },
                         info.user_id,
                     );
@@ -554,7 +579,6 @@ impl Widget for UserProfileSlidingPane {
         }
     }
 
-
     fn draw_walk(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
         let Some(info) = self.info.as_ref() else {
             self.visible = false;
@@ -562,20 +586,29 @@ impl Widget for UserProfileSlidingPane {
         };
 
         // Set the user name, using the user ID as a fallback.
-        self.label(ids!(user_name)).set_text(cx, info.displayable_name());
-        self.label(ids!(user_id)).set_text(cx, info.user_id.as_str());
+        self.label(ids!(user_name))
+            .set_text(cx, info.displayable_name());
+        self.label(ids!(user_id))
+            .set_text(cx, info.user_id.as_str());
 
         // Set the avatar image, using the user name as a fallback.
         let avatar_ref = self.avatar(ids!(avatar));
         info.avatar_state
             .data()
-            .and_then(|data| avatar_ref.show_image(cx, None, |cx, img| utils::load_png_or_jpg(&img, cx, data)).ok())
+            .and_then(|data| {
+                avatar_ref
+                    .show_image(cx, None, |cx, img| utils::load_png_or_jpg(&img, cx, data))
+                    .ok()
+            })
             .unwrap_or_else(|| avatar_ref.show_text(cx, None, None, info.displayable_name()));
 
         // Set the membership status and role in the room.
-        self.label(ids!(membership_title_label)).set_text(cx, &info.membership_title());
-        self.label(ids!(membership_status_label)).set_text(cx, info.membership_status());
-        self.label(ids!(role_info_label)).set_text(cx, info.role_in_room().as_ref());
+        self.label(ids!(membership_title_label))
+            .set_text(cx, &info.membership_title());
+        self.label(ids!(membership_status_label))
+            .set_text(cx, info.membership_status());
+        self.label(ids!(role_info_label))
+            .set_text(cx, info.role_in_room().as_ref());
 
         // Draw and enable/disable the buttons according to user and room membership info:
         // * `direct_message_button` is disabled if the user is the same as the account user,
@@ -585,7 +618,9 @@ impl Widget for UserProfileSlidingPane {
         // * `ignore_user_button` is disabled if the user is not a member of the room,
         //    or if the user is the same as the account user, since you cannot ignore yourself.
         //    * The button text changes to "Unignore" if the user is already ignored.
-        let is_pane_showing_current_account = info.room_member.as_ref()
+        let is_pane_showing_current_account = info
+            .room_member
+            .as_ref()
             .map(|rm| rm.is_account_user())
             .unwrap_or_else(|| current_user_id().is_some_and(|uid| uid == info.user_id));
 
@@ -593,20 +628,28 @@ impl Widget for UserProfileSlidingPane {
         // self.button(ids!(direct_message_button)).set_enabled(!is_pane_showing_current_account);
 
         let ignore_user_button = self.button(ids!(ignore_user_button));
-        ignore_user_button.set_enabled(cx, !is_pane_showing_current_account && info.room_member.is_some());
+        ignore_user_button.set_enabled(
+            cx,
+            !is_pane_showing_current_account && info.room_member.is_some(),
+        );
         // Unfortunately the Matrix SDK's RoomMember type does not properly track
         // the `ignored` state of a user, so we have to maintain it separately.
-        let is_ignored = info.room_member.as_ref()
+        let is_ignored = info
+            .room_member
+            .as_ref()
             .is_some_and(|rm| is_user_ignored(rm.user_id()));
         ignore_user_button.set_text(
             cx,
-            if is_ignored { "Unignore (Unblock) User" } else { "Ignore (Block) User" }
+            if is_ignored {
+                "Unignore (Unblock) User"
+            } else {
+                "Ignore (Block) User"
+            },
         );
 
         self.view.draw_walk(cx, scope, walk)
     }
 }
-
 
 impl UserProfileSlidingPane {
     /// Returns `true` if this pane is currently being shown.
@@ -627,14 +670,13 @@ impl UserProfileSlidingPane {
                 info.user_id.clone(),
                 Some(&info.room_id),
                 true,
-                |profile, rooms| (profile.clone(), rooms.get(&info.room_id).cloned())
+                |profile, rooms| (profile.clone(), rooms.get(&info.room_id).cloned()),
             ) {
                 log!("Found user {} room member info in cache", info.user_id);
                 // Update avatar state, preferring that of the room member info.
                 if let Some(uri) = room_member.avatar_url() {
                     info.avatar_state = AvatarState::Known(Some(uri.to_owned()));
-                }
-                else {
+                } else {
                     match new_profile.avatar_state {
                         s @ AvatarState::Known(Some(_)) | s @ AvatarState::Loaded(_) => {
                             info.avatar_state = s.clone();
@@ -644,7 +686,8 @@ impl UserProfileSlidingPane {
                 }
                 // Update displayable username.
                 if info.username.is_none() {
-                    info.username = room_member.display_name()
+                    info.username = room_member
+                        .display_name()
                         .map(|dn| dn.to_owned())
                         .or_else(|| new_profile.username.clone());
                 }
@@ -652,15 +695,19 @@ impl UserProfileSlidingPane {
             }
         }
         if let AvatarState::Known(Some(uri)) = &info.avatar_state {
-            if let AvatarCacheEntry::Loaded(data) = avatar_cache::get_or_fetch_avatar(_cx, uri.clone()) {
+            if let AvatarCacheEntry::Loaded(data) =
+                avatar_cache::get_or_fetch_avatar(_cx, uri.clone())
+            {
                 info.avatar_state = AvatarState::Loaded(data);
             }
         }
-        
+
         // If TSP is enabled, populate the TSP verification info for this user.
-        #[cfg(feature = "tsp")] {
+        #[cfg(feature = "tsp")]
+        {
             use crate::tsp::verify_user::TspVerifyUserWidgetExt;
-            self.view.tsp_verify_user(ids!(tsp_verify_user))
+            self.view
+                .tsp_verify_user(ids!(tsp_verify_user))
                 .show(_cx, info.user_id.clone());
         }
 
@@ -674,9 +721,15 @@ impl UserProfileSlidingPane {
         self.view(ids!(bg_view)).set_visible(cx, true);
 
         self.view.button(ids!(close_button)).reset_hover(cx);
-        self.view.button(ids!(direct_message_button)).reset_hover(cx);
-        self.view.button(ids!(copy_link_to_user_button)).reset_hover(cx);
-        self.view.button(ids!(jump_to_read_receipt_button)).reset_hover(cx);
+        self.view
+            .button(ids!(direct_message_button))
+            .reset_hover(cx);
+        self.view
+            .button(ids!(copy_link_to_user_button))
+            .reset_hover(cx);
+        self.view
+            .button(ids!(jump_to_read_receipt_button))
+            .reset_hover(cx);
         self.view.button(ids!(ignore_user_button)).reset_hover(cx);
         self.redraw(cx);
     }
@@ -685,19 +738,25 @@ impl UserProfileSlidingPane {
 impl UserProfileSlidingPaneRef {
     /// See [`UserProfileSlidingPane::is_currently_shown()`]
     pub fn is_currently_shown(&self, cx: &mut Cx) -> bool {
-        let Some(inner) = self.borrow() else { return false };
+        let Some(inner) = self.borrow() else {
+            return false;
+        };
         inner.is_currently_shown(cx)
     }
 
     /// See [`UserProfileSlidingPane::set_info()`]
     pub fn set_info(&self, _cx: &mut Cx, info: UserProfilePaneInfo) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.set_info(_cx, info);
     }
 
     /// See [`UserProfileSlidingPane::show()`]
     pub fn show(&self, cx: &mut Cx) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.show(cx);
     }
 }

@@ -1,4 +1,19 @@
 # Robrix Release CI Workflow
+#
+# RUNNER COST NOTES:
+# ==================
+# - Standard runners (ubuntu-latest, macos-*, windows-*): included in free tier
+# - ARM runners (ubuntu-*-arm): LARGER RUNNERS - cost $0.016/minute (10x standard)
+#
+# To avoid large runner costs:
+# 1. Use "All-x86_64-only" option for most releases (skips ARM Linux builds)
+# 2. Use self-hosted runners for ARM builds (set use_self_hosted_for_arm=true)
+# 3. Configure self-hosted runners with: ./scripts/setup-self-hosted-runner.sh
+#
+# Self-hosted runner requirements:
+# - Linux ARM64 machine (e.g., Raspberry Pi 4+, AWS Graviton, Apple M1 via Docker)
+# - Runner configured with labels: self-hosted,robrix,linux,arm64
+# - See scripts/setup-self-hosted-runner.sh for setup instructions
 
 name: Robrix Release CI
 
@@ -15,12 +30,13 @@ on:
         type: choice
         options:
           - 'All'                         # Build for all platforms
+          - 'All-x86_64-only'             # Build for all x86_64 platforms (no ARM, cheaper)
           - 'linux-ubuntu-24.04'          # Build for Ubuntu 24.04 both x86_64 and aarch64
           - 'linux-ubuntu-24.04-x86_64'   # Build for Ubuntu 24.04 x86_64
-          - 'linux-ubuntu-24.04-aarch64'  # Build for Ubuntu 24.04 aarch64
+          - 'linux-ubuntu-24.04-aarch64'  # Build for Ubuntu 24.04 aarch64 (self-hosted or larger runner)
           - 'linux-ubuntu-22.04'          # Build for Ubuntu 22.04 both x86_64 and aarch64
           - 'linux-ubuntu-22.04-x86_64'   # Build for Ubuntu 22.04 x86_64
-          - 'linux-ubuntu-22.04-aarch64'  # Build for Ubuntu 22.04 aarch64
+          - 'linux-ubuntu-22.04-aarch64'  # Build for Ubuntu 22.04 aarch64 (self-hosted or larger runner)
           - 'macos-14-aarch64'            # Build for MacOS 14 (Apple Silicon)
           - 'macos-15-x86_64'             # Build for MacOS 15 (Intel)
           - 'windows-2022-x86_64'         # Build for Windows 2022 x86_64
@@ -39,6 +55,11 @@ on:
         required: true
         type: boolean
         default: false
+      use_self_hosted_for_arm:
+        description: 'Use self-hosted runners for ARM builds (requires configured runner with labels: self-hosted,robrix,linux,arm64)'
+        required: false
+        type: boolean
+        default: true
 
 permissions: write-all
 env:
@@ -83,29 +104,48 @@ jobs:
     steps:
       - name: Set build matrix
         id: set-matrix
+        env:
+          TARGET_PLATFORMS: ${{ github.event.inputs.target_platforms }}
+          USE_SELF_HOSTED: ${{ github.event.inputs.use_self_hosted_for_arm }}
         run: |
+          # Determine ARM runner type based on self-hosted preference
+          # Default (true): use self-hosted runners with labels: [self-hosted, robrix, linux, arm64]
+          # When false: use GitHub-hosted ARM runners (ubuntu-*-arm) which are LARGER RUNNERS and cost $0.016/min
+          # Note: For self-hosted runners, we use JSON array format for multiple labels
+          if [[ "$USE_SELF_HOSTED" != "false" ]]; then
+            # Self-hosted runners (default) - configure with: ./scripts/setup-self-hosted-runner.sh
+            ARM_RUNNER='["self-hosted","robrix","linux","arm64"]'
+          else
+            # WARNING: These are larger runners and cost significantly more than standard runners ($0.016/min)
+            ARM_RUNNER='"ubuntu-22.04-arm"'
+          fi
+
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            case "${{ github.event.inputs.target_platforms }}" in
+            case "$TARGET_PLATFORMS" in
               "All")
-                matrix='{"include":[{"os":"ubuntu-24.04","arch":"x86_64"},{"os":"ubuntu-24.04-arm","arch":"aarch64"},{"os":"ubuntu-22.04","arch":"x86_64"},{"os":"ubuntu-22.04-arm","arch":"aarch64"},{"os":"macos-14","arch":"aarch64"},{"os":"macos-15-intel","arch":"x86_64"},{"os":"windows-2022","arch":"x86_64"}]}'
+                matrix="{\"include\":[{\"os\":\"ubuntu-24.04\",\"arch\":\"x86_64\"},{\"os\":${ARM_RUNNER},\"arch\":\"aarch64\"},{\"os\":\"ubuntu-22.04\",\"arch\":\"x86_64\"},{\"os\":${ARM_RUNNER},\"arch\":\"aarch64\"},{\"os\":\"macos-14\",\"arch\":\"aarch64\"},{\"os\":\"macos-15-intel\",\"arch\":\"x86_64\"},{\"os\":\"windows-2022\",\"arch\":\"x86_64\"}]}"
+                ;;
+              "All-x86_64-only")
+                # Cost-effective option: skip ARM Linux builds entirely, use standard runners only
+                matrix='{"include":[{"os":"ubuntu-24.04","arch":"x86_64"},{"os":"ubuntu-22.04","arch":"x86_64"},{"os":"macos-14","arch":"aarch64"},{"os":"macos-15-intel","arch":"x86_64"},{"os":"windows-2022","arch":"x86_64"}]}'
                 ;;
               "linux-ubuntu-24.04")
-                matrix='{"include":[{"os":"ubuntu-24.04","arch":"x86_64"},{"os":"ubuntu-24.04-arm","arch":"aarch64"}]}'
+                matrix="{\"include\":[{\"os\":\"ubuntu-24.04\",\"arch\":\"x86_64\"},{\"os\":${ARM_RUNNER},\"arch\":\"aarch64\"}]}"
                 ;;
-              "linux-ubuntu-22.04")
-                matrix='{"include":[{"os":"ubuntu-22.04","arch":"x86_64"},{"os":"ubuntu-22.04-arm","arch":"aarch64"}]}'
-                ;;
-              "linux-ubuntu-24.04")
+              "linux-ubuntu-24.04-x86_64")
                 matrix='{"include":[{"os":"ubuntu-24.04","arch":"x86_64"}]}'
                 ;;
               "linux-ubuntu-24.04-aarch64")
-                matrix='{"include":[{"os":"ubuntu-24.04-arm","arch":"aarch64"}]}'
+                matrix="{\"include\":[{\"os\":${ARM_RUNNER},\"arch\":\"aarch64\"}]}"
                 ;;
               "linux-ubuntu-22.04")
+                matrix="{\"include\":[{\"os\":\"ubuntu-22.04\",\"arch\":\"x86_64\"},{\"os\":${ARM_RUNNER},\"arch\":\"aarch64\"}]}"
+                ;;
+              "linux-ubuntu-22.04-x86_64")
                 matrix='{"include":[{"os":"ubuntu-22.04","arch":"x86_64"}]}'
                 ;;
               "linux-ubuntu-22.04-aarch64")
-                matrix='{"include":[{"os":"ubuntu-22.04-arm","arch":"aarch64"}]}'
+                matrix="{\"include\":[{\"os\":${ARM_RUNNER},\"arch\":\"aarch64\"}]}"
                 ;;
               "macos-14-aarch64")
                 matrix='{"include":[{"os":"macos-14","arch":"aarch64"}]}'
@@ -118,7 +158,10 @@ jobs:
                 ;;
             esac
           else
-            matrix='{"include":[{"os":"ubuntu-24.04","arch":"x86_64"},{"os":"ubuntu-24.04-arm","arch":"aarch64"},{"os":"ubuntu-22.04","arch":"x86_64"},{"os":"ubuntu-22.04-arm","arch":"aarch64"},{"os":"macos-14","arch":"aarch64"},{"os":"macos-15-intel","arch":"x86_64"},{"os":"windows-2022","arch":"x86_64"}]}'
+            # Tag-triggered releases: use self-hosted runners for ARM builds to avoid large runner costs
+            # Self-hosted runners must be configured with labels: self-hosted, robrix, linux, arm64
+            # Run ./scripts/setup-self-hosted-runner.sh to configure a runner
+            matrix='{"include":[{"os":"ubuntu-24.04","arch":"x86_64"},{"os":["self-hosted","robrix","linux","arm64"],"arch":"aarch64"},{"os":"ubuntu-22.04","arch":"x86_64"},{"os":["self-hosted","robrix","linux","arm64"],"arch":"aarch64"},{"os":"macos-14","arch":"aarch64"},{"os":"macos-15-intel","arch":"x86_64"},{"os":"windows-2022","arch":"x86_64"}]}'
           fi
           echo "matrix=$matrix" >> $GITHUB_OUTPUT
 
@@ -133,7 +176,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Linux necessary dependencies
-        if: matrix.os == 'ubuntu-22.04' || matrix.os == 'ubuntu-22.04-arm' || matrix.os == 'ubuntu-24.04' || matrix.os == 'ubuntu-24.04-arm'
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -180,13 +223,15 @@ jobs:
 
       - name: Set Artifact and Upload Paths
         shell: bash
+        env:
+          RUNNER_OS: ${{ runner.os }}
         run: |
           VERSION=${{ env.VERSION }}
-          OS=${{ matrix.os }}
           ARCH=${{ matrix.arch }}
 
-
-          if [[ "$OS" == "ubuntu-22.04" || "$OS" == "ubuntu-24.04" ]]; then
+          # Use runner.os for OS detection (works for both GitHub-hosted and self-hosted runners)
+          # Use matrix.arch for architecture detection
+          if [[ "$RUNNER_OS" == "Linux" && "$ARCH" == "x86_64" ]]; then
             {
               echo "DEB=robrix_${VERSION}_amd64.deb"
               echo "APPIMAGE=robrix_${VERSION}_x86_64.AppImage"
@@ -198,7 +243,7 @@ jobs:
               echo "EOF"
             } >> $GITHUB_ENV
 
-          elif [[ "$OS" == "ubuntu-22.04-arm" || "$OS" == "ubuntu-24.04-arm" ]]; then
+          elif [[ "$RUNNER_OS" == "Linux" && "$ARCH" == "aarch64" ]]; then
             {
               echo "DEB=robrix_${VERSION}_arm64.deb"
               echo "APPIMAGE=robrix_${VERSION}_aarch64.AppImage"
@@ -210,19 +255,19 @@ jobs:
               echo "EOF"
             } >> $GITHUB_ENV
 
-          elif [[ "$OS" == "macos-14" ]]; then
+          elif [[ "$RUNNER_OS" == "macOS" && "$ARCH" == "aarch64" ]]; then
             FILE="robrix-${VERSION}-macOS-${ARCH}.dmg"
             mv ./dist/Robrix_${VERSION}_aarch64.dmg ./dist/$FILE
             echo "RELEASE_FILE=$FILE" >> $GITHUB_ENV
             echo "UPLOAD_FILES=./dist/$FILE" >> $GITHUB_ENV
 
-          elif [[ "$OS" == "macos-15-intel" ]]; then
+          elif [[ "$RUNNER_OS" == "macOS" && "$ARCH" == "x86_64" ]]; then
             FILE="robrix-${VERSION}-macOS-${ARCH}.dmg"
             mv ./dist/Robrix_${VERSION}_x64.dmg ./dist/$FILE
             echo "RELEASE_FILE=$FILE" >> $GITHUB_ENV
             echo "UPLOAD_FILES=./dist/$FILE" >> $GITHUB_ENV
 
-          elif [[ "$OS" == "windows-2022" ]]; then
+          elif [[ "$RUNNER_OS" == "Windows" ]]; then
             FILE="robrix-${VERSION}-windows-${ARCH}-setup.exe"
             mv ./dist/robrix_${VERSION}_x64-setup.exe ./dist/$FILE
             echo "RELEASE_FILE=$FILE" >> $GITHUB_ENV
@@ -247,6 +292,6 @@ jobs:
           github.event_name == 'workflow_dispatch' && github.event.inputs.create_release != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: robrix-${{ env.VERSION }}-${{ matrix.os }}-${{ matrix.arch }}
+          name: robrix-${{ env.VERSION }}-${{ runner.os }}-${{ matrix.arch }}
           path: ${{ env.UPLOAD_FILES }}
           retention-days: 30

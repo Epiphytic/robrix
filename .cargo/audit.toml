@@ -1,0 +1,14 @@
+# Security audit configuration
+# See: https://docs.rs/cargo-audit/latest/cargo_audit/config/struct.Config.html
+
+[advisories]
+# Ignore advisories that have no fix available or are false positives
+ignore = [
+  # RUSTSEC-2023-0071: rsa crate - Marvin Attack timing sidechannel
+  # No fixed version available. This is a transitive dependency via sqlx-mysql.
+  # The attack requires timing measurements which are not practical in our use case.
+  "RUSTSEC-2023-0071",
+]
+
+# Configure how unmaintained crate warnings are handled
+informational_warnings = ["unmaintained"]

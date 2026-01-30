@@ -1,7 +1,10 @@
 use makepad_widgets::*;
 use matrix_sdk::ruma::OwnedUserId;
 
-use crate::{shared::popup_list::{enqueue_popup_notification, PopupItem, PopupKind}, tsp::{submit_tsp_request, tsp_state_ref, TspIdentityAction, TspRequest}};
+use crate::{
+    shared::popup_list::{enqueue_popup_notification, PopupItem, PopupKind},
+    tsp::{submit_tsp_request, tsp_state_ref, TspIdentityAction, TspRequest},
+};
 
 live_design! {
     link tsp_enabled
@@ -140,11 +143,14 @@ pub enum TspVerifiedInfo {
 
 #[derive(Live, LiveHook, Widget)]
 pub struct TspVerifyUser {
-    #[deref] view: View,
+    #[deref]
+    view: View,
     /// The Matrix User ID of the other user that we want to verify.
-    #[rust] user_id: Option<OwnedUserId>,
+    #[rust]
+    user_id: Option<OwnedUserId>,
     /// Info about whether the other user has or has not been verified via TSP.
-    #[rust] verified_info: TspVerifiedInfo,
+    #[rust]
+    verified_info: TspVerifiedInfo,
 }
 
 impl Widget for TspVerifyUser {
@@ -159,7 +165,11 @@ impl Widget for TspVerifyUser {
 }
 impl MatchEvent for TspVerifyUser {
     fn handle_actions(&mut self, cx: &mut Cx, actions: &Actions) {
-        if self.view.button(ids!(remove_tsp_association_button)).clicked(actions) {
+        if self
+            .view
+            .button(ids!(remove_tsp_association_button))
+            .clicked(actions)
+        {
             enqueue_popup_notification(PopupItem {
                 message: "Removing a TSP association is not yet implemented".into(),
                 auto_dismissal_duration: Some(5.0),
@@ -192,35 +202,47 @@ impl MatchEvent for TspVerifyUser {
                 {
                     verify_user_button.set_text(cx, "Sent request!");
                     enqueue_popup_notification(PopupItem {
-                        message: format!("Sent TSP verification request.\n\nWaiting for \"{user_id}\" to respond..."),
+                        message: format!(
+                            "Sent TSP verification request.\n\nWaiting for \"{user_id}\" to respond..."
+                        ),
                         auto_dismissal_duration: Some(5.0),
                         kind: PopupKind::Info,
                     });
                 }
-                Some(TspIdentityAction::ErrorSendingDidAssociationRequest { user_id, error, .. })
-                    if Some(user_id) == self.user_id.as_ref() =>
-                {
+                Some(TspIdentityAction::ErrorSendingDidAssociationRequest {
+                    user_id,
+                    error,
+                    ..
+                }) if Some(user_id) == self.user_id.as_ref() => {
                     verify_user_button.set_enabled(cx, true);
                     verify_user_button.set_text(cx, "Verify this user via TSP");
                     enqueue_popup_notification(PopupItem {
-                        message: format!("Error sending TSP verification request to \"{user_id}\": {error}"),
+                        message: format!(
+                            "Error sending TSP verification request to \"{user_id}\": {error}"
+                        ),
                         auto_dismissal_duration: None,
                         kind: PopupKind::Error,
                     });
                 }
-                Some(TspIdentityAction::ReceivedDidAssociationResponse { did, user_id, accepted })
-                    if Some(user_id) == self.user_id.as_ref() =>
-                {
+                Some(TspIdentityAction::ReceivedDidAssociationResponse {
+                    did,
+                    user_id,
+                    accepted,
+                }) if Some(user_id) == self.user_id.as_ref() => {
                     if *accepted {
                         enqueue_popup_notification(PopupItem {
-                            message: format!("User \"{user_id}\" accepted your TSP verification request."),
+                            message: format!(
+                                "User \"{user_id}\" accepted your TSP verification request."
+                            ),
                             auto_dismissal_duration: None,
                             kind: PopupKind::Success,
                         });
                         self.verified_info = TspVerifiedInfo::Verified { did: did.clone() };
                     } else {
                         enqueue_popup_notification(PopupItem {
-                            message: format!("User \"{user_id}\" rejected your TSP verification request."),
+                            message: format!(
+                                "User \"{user_id}\" rejected your TSP verification request."
+                            ),
                             auto_dismissal_duration: None,
                             kind: PopupKind::Warning,
                         });
@@ -244,12 +266,16 @@ impl TspVerifyUser {
             TspVerifiedInfo::Verified { did } => {
                 verified_tsp_view.set_visible(cx, true);
                 unverified_tsp_view.set_visible(cx, false);
-                verified_tsp_view.text_input(ids!(tsp_did_read_only_input)).set_text(cx, did);
+                verified_tsp_view
+                    .text_input(ids!(tsp_did_read_only_input))
+                    .set_text(cx, did);
             }
             TspVerifiedInfo::Unverified => {
                 verified_tsp_view.set_visible(cx, false);
                 unverified_tsp_view.set_visible(cx, true);
-                unverified_tsp_view.text_input(ids!(tsp_did_input)).set_text(cx, "");
+                unverified_tsp_view
+                    .text_input(ids!(tsp_did_input))
+                    .set_text(cx, "");
                 let verify_user_button = unverified_tsp_view.button(ids!(verify_user_button));
                 verify_user_button.set_enabled(cx, true);
                 verify_user_button.set_text(cx, "Verify this user via TSP");
@@ -258,12 +284,15 @@ impl TspVerifyUser {
     }
 
     fn show(&mut self, cx: &mut Cx, user_id: OwnedUserId) {
-        let verified_info = tsp_state_ref().lock().unwrap()
+        let verified_info = tsp_state_ref()
+            .lock()
+            .unwrap()
             .get_associated_did(&user_id)
-            .map_or(
-                TspVerifiedInfo::Unverified,
-                |did| TspVerifiedInfo::Verified { did: did.to_string() },
-            );
+            .map_or(TspVerifiedInfo::Unverified, |did| {
+                TspVerifiedInfo::Verified {
+                    did: did.to_string(),
+                }
+            });
 
         self.verified_info = verified_info;
         self.user_id = Some(user_id);
@@ -273,7 +302,9 @@ impl TspVerifyUser {
 
 impl TspVerifyUserRef {
     pub fn show(&self, cx: &mut Cx, user_id: OwnedUserId) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.show(cx, user_id);
     }
 }

@@ -1,12 +1,22 @@
 use std::{
-    borrow::Cow, cmp::Ordering, collections::{BTreeMap, HashSet}, ops::Deref
+    borrow::Cow,
+    cmp::Ordering,
+    collections::{BTreeMap, HashSet},
+    ops::Deref,
 };
 use bitflags::bitflags;
-use matrix_sdk::{RoomDisplayName, ruma::{
-    OwnedRoomAliasId, RoomAliasId, RoomId, events::tag::{TagName, Tags}
-}};
+use matrix_sdk::{
+    RoomDisplayName,
+    ruma::{
+        OwnedRoomAliasId, RoomAliasId, RoomId,
+        events::tag::{TagName, Tags},
+    },
+};
 
-use crate::{home::rooms_list::{InvitedRoomInfo, JoinedRoomInfo}, home::spaces_bar::JoinedSpaceInfo};
+use crate::{
+    home::rooms_list::{InvitedRoomInfo, JoinedRoomInfo},
+    home::spaces_bar::JoinedSpaceInfo,
+};
 
 static EMPTY_TAGS: Tags = BTreeMap::new();
 
@@ -130,7 +140,6 @@ impl FilterableRoom for JoinedSpaceInfo {
     }
 }
 
-
 pub type RoomFilterFn = dyn Fn(&dyn FilterableRoom) -> bool;
 pub type SortFn = dyn Fn(&dyn FilterableRoom, &dyn FilterableRoom) -> Ordering;
 
@@ -238,18 +247,16 @@ impl RoomDisplayFilterBuilder {
     }
 
     fn matches_room_name(room: &dyn FilterableRoom, keywords: &str) -> bool {
-        room.room_name()
-            .to_lowercase()
-            .contains(keywords)
+        room.room_name().to_lowercase().contains(keywords)
     }
 
     fn matches_room_alias(room: &dyn FilterableRoom, keywords: &str) -> bool {
         room.canonical_alias()
             .is_some_and(|alias| alias.as_str().eq_ignore_ascii_case(keywords))
-        ||
-        room.alt_aliases()
-            .iter()
-            .any(|alias| alias.as_str().eq_ignore_ascii_case(keywords))
+            || room
+                .alt_aliases()
+                .iter()
+                .any(|alias| alias.as_str().eq_ignore_ascii_case(keywords))
     }
 
     fn matches_room_tags(room: &dyn FilterableRoom, keywords: &str) -> bool {
@@ -353,12 +360,10 @@ impl RoomDisplayFilterBuilder {
         let filter = if keywords.is_empty() || filter_criteria.is_empty() {
             RoomDisplayFilter::default()
         } else {
-            RoomDisplayFilter(Some(Box::new(
-                move |room| {
-                    let keywords = keywords.trim().to_lowercase();
-                    Self::matches_filter(room, &keywords, self.filter_criteria)
-                }
-            )))
+            RoomDisplayFilter(Some(Box::new(move |room| {
+                let keywords = keywords.trim().to_lowercase();
+                Self::matches_filter(room, &keywords, self.filter_criteria)
+            })))
         };
         (filter, self.sort_fn)
     }
