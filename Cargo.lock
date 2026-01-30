@@ -4880,6 +4880,7 @@ dependencies = [
  "robius-location",
  "robius-open",
  "robius-use-makepad",
+ "robrix-social-events",
  "ruma",
  "sanitize-filename",
  "serde",
@@ -4889,6 +4890,17 @@ dependencies = [
  "tracing-subscriber",
  "tsp_sdk",
  "unicode-segmentation",
+ "url",
+]
+
+[[package]]
+name = "robrix-social-events"
+version = "0.1.0"
+dependencies = [
+ "ruma",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
  "url",
 ]
 

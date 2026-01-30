@@ -67,3 +67,10 @@ pub fn project_dir() -> &'static ProjectDirs {
 pub fn app_data_dir() -> &'static Path {
     project_dir().data_dir()
 }
+
+/// Social media features for Matrix.
+#[cfg(feature = "social")]
+pub mod social;
+/// Dummy social module with placeholder widgets, for builds without social features.
+#[cfg(not(feature = "social"))]
+pub mod social_dummy;
