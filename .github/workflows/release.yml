@@ -1,4 +1,19 @@
 # Robrix Release CI Workflow
+#
+# RUNNER COST NOTES:
+# ==================
+# - Standard runners (ubuntu-latest, macos-*, windows-*): included in free tier
+# - ARM runners (ubuntu-*-arm): LARGER RUNNERS - cost $0.016/minute (10x standard)
+#
+# To avoid large runner costs:
+# 1. Use "All-x86_64-only" option for most releases (skips ARM Linux builds)
+# 2. Use self-hosted runners for ARM builds (set use_self_hosted_for_arm=true)
+# 3. Configure self-hosted runners with: ./scripts/setup-self-hosted-runner.sh
+#
+# Self-hosted runner requirements:
+# - Linux ARM64 machine (e.g., Raspberry Pi 4+, AWS Graviton, Apple M1 via Docker)
+# - Runner configured with labels: self-hosted,robrix,linux,arm64
+# - See scripts/setup-self-hosted-runner.sh for setup instructions
 
 name: Robrix Release CI
 
@@ -15,12 +30,13 @@ on:
         type: choice
         options:
           - 'All'                         # Build for all platforms
+          - 'All-x86_64-only'             # Build for all x86_64 platforms (no ARM, cheaper)
           - 'linux-ubuntu-24.04'          # Build for Ubuntu 24.04 both x86_64 and aarch64
           - 'linux-ubuntu-24.04-x86_64'   # Build for Ubuntu 24.04 x86_64
-          - 'linux-ubuntu-24.04-aarch64'  # Build for Ubuntu 24.04 aarch64
+          - 'linux-ubuntu-24.04-aarch64'  # Build for Ubuntu 24.04 aarch64 (self-hosted or larger runner)
           - 'linux-ubuntu-22.04'          # Build for Ubuntu 22.04 both x86_64 and aarch64
           - 'linux-ubuntu-22.04-x86_64'   # Build for Ubuntu 22.04 x86_64
-          - 'linux-ubuntu-22.04-aarch64'  # Build for Ubuntu 22.04 aarch64
+          - 'linux-ubuntu-22.04-aarch64'  # Build for Ubuntu 22.04 aarch64 (self-hosted or larger runner)
           - 'macos-14-aarch64'            # Build for MacOS 14 (Apple Silicon)
           - 'macos-15-x86_64'             # Build for MacOS 15 (Intel)
           - 'windows-2022-x86_64'         # Build for Windows 2022 x86_64
@@ -37,6 +53,11 @@ on:
       pre_release:
         description: 'Mark as a pre-release'
         required: true
+        type: boolean
+        default: false
+      use_self_hosted_for_arm:
+        description: 'Use self-hosted runners for ARM builds (requires configured runner with label: robrix)'
+        required: false
         type: boolean
         default: false
 
@@ -83,29 +104,48 @@ jobs:
     steps:
       - name: Set build matrix
         id: set-matrix
+        env:
+          TARGET_PLATFORMS: ${{ github.event.inputs.target_platforms }}
+          USE_SELF_HOSTED: ${{ github.event.inputs.use_self_hosted_for_arm }}
         run: |
+          # Determine ARM runner type based on self-hosted preference
+          # When use_self_hosted_for_arm is true, use self-hosted runners with 'robrix' label
+          # Otherwise, use GitHub-hosted ARM runners (ubuntu-*-arm) which are larger runners and cost more
+          if [[ "$USE_SELF_HOSTED" == "true" ]]; then
+            ARM_22="self-hosted,robrix,linux,arm64"
+            ARM_24="self-hosted,robrix,linux,arm64"
+          else
+            # WARNING: These are larger runners and cost significantly more than standard runners
+            ARM_22="ubuntu-22.04-arm"
+            ARM_24="ubuntu-24.04-arm"
+          fi
+
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            case "${{ github.event.inputs.target_platforms }}" in
+            case "$TARGET_PLATFORMS" in
               "All")
-                matrix='{"include":[{"os":"ubuntu-24.04","arch":"x86_64"},{"os":"ubuntu-24.04-arm","arch":"aarch64"},{"os":"ubuntu-22.04","arch":"x86_64"},{"os":"ubuntu-22.04-arm","arch":"aarch64"},{"os":"macos-14","arch":"aarch64"},{"os":"macos-15-intel","arch":"x86_64"},{"os":"windows-2022","arch":"x86_64"}]}'
+                matrix="{\"include\":[{\"os\":\"ubuntu-24.04\",\"arch\":\"x86_64\"},{\"os\":\"$ARM_24\",\"arch\":\"aarch64\"},{\"os\":\"ubuntu-22.04\",\"arch\":\"x86_64\"},{\"os\":\"$ARM_22\",\"arch\":\"aarch64\"},{\"os\":\"macos-14\",\"arch\":\"aarch64\"},{\"os\":\"macos-15-intel\",\"arch\":\"x86_64\"},{\"os\":\"windows-2022\",\"arch\":\"x86_64\"}]}"
+                ;;
+              "All-x86_64-only")
+                # Cost-effective option: skip ARM Linux builds entirely, use standard runners only
+                matrix='{"include":[{"os":"ubuntu-24.04","arch":"x86_64"},{"os":"ubuntu-22.04","arch":"x86_64"},{"os":"macos-14","arch":"aarch64"},{"os":"macos-15-intel","arch":"x86_64"},{"os":"windows-2022","arch":"x86_64"}]}'
                 ;;
               "linux-ubuntu-24.04")
-                matrix='{"include":[{"os":"ubuntu-24.04","arch":"x86_64"},{"os":"ubuntu-24.04-arm","arch":"aarch64"}]}'
+                matrix="{\"include\":[{\"os\":\"ubuntu-24.04\",\"arch\":\"x86_64\"},{\"os\":\"$ARM_24\",\"arch\":\"aarch64\"}]}"
                 ;;
-              "linux-ubuntu-22.04")
-                matrix='{"include":[{"os":"ubuntu-22.04","arch":"x86_64"},{"os":"ubuntu-22.04-arm","arch":"aarch64"}]}'
-                ;;
-              "linux-ubuntu-24.04")
+              "linux-ubuntu-24.04-x86_64")
                 matrix='{"include":[{"os":"ubuntu-24.04","arch":"x86_64"}]}'
                 ;;
               "linux-ubuntu-24.04-aarch64")
-                matrix='{"include":[{"os":"ubuntu-24.04-arm","arch":"aarch64"}]}'
+                matrix="{\"include\":[{\"os\":\"$ARM_24\",\"arch\":\"aarch64\"}]}"
                 ;;
               "linux-ubuntu-22.04")
+                matrix="{\"include\":[{\"os\":\"ubuntu-22.04\",\"arch\":\"x86_64\"},{\"os\":\"$ARM_22\",\"arch\":\"aarch64\"}]}"
+                ;;
+              "linux-ubuntu-22.04-x86_64")
                 matrix='{"include":[{"os":"ubuntu-22.04","arch":"x86_64"}]}'
                 ;;
               "linux-ubuntu-22.04-aarch64")
-                matrix='{"include":[{"os":"ubuntu-22.04-arm","arch":"aarch64"}]}'
+                matrix="{\"include\":[{\"os\":\"$ARM_22\",\"arch\":\"aarch64\"}]}"
                 ;;
               "macos-14-aarch64")
                 matrix='{"include":[{"os":"macos-14","arch":"aarch64"}]}'
@@ -118,7 +158,9 @@ jobs:
                 ;;
             esac
           else
-            matrix='{"include":[{"os":"ubuntu-24.04","arch":"x86_64"},{"os":"ubuntu-24.04-arm","arch":"aarch64"},{"os":"ubuntu-22.04","arch":"x86_64"},{"os":"ubuntu-22.04-arm","arch":"aarch64"},{"os":"macos-14","arch":"aarch64"},{"os":"macos-15-intel","arch":"x86_64"},{"os":"windows-2022","arch":"x86_64"}]}'
+            # Tag-triggered releases: use x86_64 only by default to avoid large runner costs
+            # ARM builds can be added manually via workflow_dispatch with self-hosted runners
+            matrix='{"include":[{"os":"ubuntu-24.04","arch":"x86_64"},{"os":"ubuntu-22.04","arch":"x86_64"},{"os":"macos-14","arch":"aarch64"},{"os":"macos-15-intel","arch":"x86_64"},{"os":"windows-2022","arch":"x86_64"}]}'
           fi
           echo "matrix=$matrix" >> $GITHUB_OUTPUT
 
