@@ -58,7 +58,7 @@ live_design! {
                     draw_bg: {
                         color: (COLOR_UNREAD_BADGE_MESSAGES)
                         instance border_radius: 4.0
-                        // Adjust this border_size to larger value to make oval smaller 
+                        // Adjust this border_size to larger value to make oval smaller
                         instance border_size: 2.0
                         fn pixel(self) -> vec4 {
                             let sdf = Sdf2d::viewport(self.pos * self.rect_size)
@@ -87,14 +87,14 @@ live_design! {
                 }
             }
         }
-        
+
     }
 }
 
-
 #[derive(LiveHook, Live, Widget)]
 pub struct JumpToBottomButton {
-    #[deref] view: View,
+    #[deref]
+    view: View,
 }
 
 impl Widget for JumpToBottomButton {
@@ -153,16 +153,19 @@ impl JumpToBottomButton {
                 };
                 self.label(ids!(unread_messages_count)).set_text(
                     cx,
-                    &format!("{}{plus_sign}", std::cmp::min(unread_message_count, 99))
+                    &format!("{}{plus_sign}", std::cmp::min(unread_message_count, 99)),
                 );
-                self.view(ids!(unread_message_badge.green_rounded_label)).apply_over(cx, live!{
-                    draw_bg: {
-                        border_size: (border_size),
-                    }
-                });
+                self.view(ids!(unread_message_badge.green_rounded_label))
+                    .apply_over(
+                        cx,
+                        live! {
+                            draw_bg: {
+                                border_size: (border_size),
+                            }
+                        },
+                    );
             }
         }
-        
     }
 
     /// Updates the visibility of the jump to bottom button and the unread message badge
@@ -184,11 +187,7 @@ impl JumpToBottomButton {
         //       query the portallist's `at_end` state and set the visibility accordingly.
 
         if self.button(ids!(jump_to_bottom_button)).clicked(actions) {
-            portal_list.smooth_scroll_to_end(
-                cx,
-                SCROLL_TO_BOTTOM_SPEED,
-                None,
-            );
+            portal_list.smooth_scroll_to_end(cx, SCROLL_TO_BOTTOM_SPEED, None);
             self.update_visibility(cx, false);
         } else {
             self.update_visibility(cx, portal_list.is_at_end());
@@ -198,7 +197,6 @@ impl JumpToBottomButton {
             self.redraw(cx);
         }
     }
-
 }
 
 impl JumpToBottomButtonRef {
@@ -217,12 +215,7 @@ impl JumpToBottomButtonRef {
     }
 
     /// See [`JumpToBottomButton::update_from_actions()`].
-    pub fn update_from_actions(
-        &self,
-        cx: &mut Cx,
-        portal_list: &PortalListRef,
-        actions: &Actions,
-    ) {
+    pub fn update_from_actions(&self, cx: &mut Cx, portal_list: &PortalListRef, actions: &Actions) {
         if let Some(mut inner) = self.borrow_mut() {
             inner.update_from_actions(cx, portal_list, actions);
         }
@@ -235,5 +228,5 @@ pub enum UnreadMessageCount {
     /// There are unread messages, but we do not know how many.
     Unknown,
     /// There are unread messages, and we know exactly how many.
-    Known(u64)
+    Known(u64),
 }

@@ -1,6 +1,15 @@
 use makepad_widgets::{text::selection::Cursor, *};
 
-use crate::{logout::logout_confirm_modal::{LogoutAction, LogoutConfirmModalAction}, profile::user_profile::UserProfile, shared::{avatar::AvatarWidgetExt, popup_list::{enqueue_popup_notification, PopupItem, PopupKind}, styles::*}, utils};
+use crate::{
+    logout::logout_confirm_modal::{LogoutAction, LogoutConfirmModalAction},
+    profile::user_profile::UserProfile,
+    shared::{
+        avatar::AvatarWidgetExt,
+        popup_list::{enqueue_popup_notification, PopupItem, PopupKind},
+        styles::*,
+    },
+    utils,
+};
 
 live_design! {
     use link::theme::*;
@@ -194,7 +203,7 @@ live_design! {
             spacing: 10
 
             manage_account_button = <RobrixIconButton> {
-                
+
                 padding: {top: 10, bottom: 10, left: 12, right: 15}
                 margin: {left: 5}
                 draw_bg: {
@@ -236,9 +245,11 @@ live_design! {
 /// The view containing all user account-related settings.
 #[derive(Live, LiveHook, Widget)]
 pub struct AccountSettings {
-    #[deref] view: View,
+    #[deref]
+    view: View,
 
-    #[rust] own_profile: Option<UserProfile>,
+    #[rust]
+    own_profile: Option<UserProfile>,
 }
 
 impl Widget for AccountSettings {
@@ -268,19 +279,29 @@ impl MatchEvent for AccountSettings {
                 }
             }
         }
-        
-        let Some(own_profile) = &self.own_profile else { return };
 
-        if self.view.button(ids!(upload_avatar_button)).clicked(actions) {
+        let Some(own_profile) = &self.own_profile else {
+            return;
+        };
+
+        if self
+            .view
+            .button(ids!(upload_avatar_button))
+            .clicked(actions)
+        {
             // TODO: support uploading a new avatar picture.
             enqueue_popup_notification(PopupItem {
                 message: String::from("Avatar uploading is not yet implemented."),
                 auto_dismissal_duration: Some(4.0),
-                kind: PopupKind::Warning
+                kind: PopupKind::Warning,
             });
         }
 
-        if self.view.button(ids!(delete_avatar_button)).clicked(actions) {
+        if self
+            .view
+            .button(ids!(delete_avatar_button))
+            .clicked(actions)
+        {
             // TODO: support removing the avatar picture.
             enqueue_popup_notification(PopupItem {
                 message: String::from("Avatar deletion is not yet implemented."),
@@ -305,30 +326,36 @@ impl MatchEvent for AccountSettings {
             } else {
                 (COLOR_FG_DISABLED, COLOR_BG_DISABLED)
             };
-            accept_display_name_button.apply_over(cx, live!(
-                draw_bg: {
-                    color: (accept_button_bg_color),
-                    border_color: (accept_button_fg_color),
-                },
-                draw_text: {
-                    color: (accept_button_fg_color),
-                },
-                draw_icon: {
-                    color: (accept_button_fg_color),
-                }
-            ));
-            cancel_display_name_button.apply_over(cx, live!(
-                draw_bg: {
-                    color: (cancel_button_bg_color),
-                    border_color: (cancel_button_fg_color),
-                },
-                draw_text: {
-                    color: (cancel_button_fg_color),
-                },
-                draw_icon: {
-                    color: (cancel_button_fg_color),
-                }
-            ));
+            accept_display_name_button.apply_over(
+                cx,
+                live!(
+                    draw_bg: {
+                        color: (accept_button_bg_color),
+                        border_color: (accept_button_fg_color),
+                    },
+                    draw_text: {
+                        color: (accept_button_fg_color),
+                    },
+                    draw_icon: {
+                        color: (accept_button_fg_color),
+                    }
+                ),
+            );
+            cancel_display_name_button.apply_over(
+                cx,
+                live!(
+                    draw_bg: {
+                        color: (cancel_button_bg_color),
+                        border_color: (cancel_button_fg_color),
+                    },
+                    draw_text: {
+                        color: (cancel_button_fg_color),
+                    },
+                    draw_icon: {
+                        color: (cancel_button_fg_color),
+                    }
+                ),
+            );
         };
 
         if let Some(new_name) = display_name_input.changed(actions) {
@@ -340,7 +367,14 @@ impl MatchEvent for AccountSettings {
             // Reset the display name input and disable the name change buttons.
             let new_text = own_profile.username.as_deref().unwrap_or("");
             display_name_input.set_text(cx, new_text);
-            display_name_input.set_cursor(cx, Cursor { index: new_text.len(), prefer_next_row: false }, false);
+            display_name_input.set_cursor(
+                cx,
+                Cursor {
+                    index: new_text.len(),
+                    prefer_next_row: false,
+                },
+                false,
+            );
             enable_buttons(cx, false);
         }
 
@@ -349,7 +383,7 @@ impl MatchEvent for AccountSettings {
             enqueue_popup_notification(PopupItem {
                 message: String::from("Display name change is not yet implemented."),
                 auto_dismissal_duration: Some(4.0),
-                kind: PopupKind::Warning
+                kind: PopupKind::Warning,
             });
         }
 
@@ -358,17 +392,21 @@ impl MatchEvent for AccountSettings {
             enqueue_popup_notification(PopupItem {
                 message: String::from("Copied your User ID to the clipboard."),
                 auto_dismissal_duration: Some(3.0),
-                kind: PopupKind::Success
+                kind: PopupKind::Success,
             });
         }
 
-        if self.view.button(ids!(manage_account_button)).clicked(actions) {
+        if self
+            .view
+            .button(ids!(manage_account_button))
+            .clicked(actions)
+        {
             // TODO: support opening the user's account management page in a browser,
             //       or perhaps in an in-app pane if that's what is needed for regular UN+PW login.
             enqueue_popup_notification(PopupItem {
                 message: String::from("Account management is not yet implemented."),
                 auto_dismissal_duration: Some(4.0),
-                kind: PopupKind::Warning
+                kind: PopupKind::Warning,
             });
         }
 
@@ -391,11 +429,13 @@ impl AccountSettings {
         let our_own_avatar = self.view.avatar(ids!(our_own_avatar));
         let mut drew_avatar = false;
         if let Some(avatar_img_data) = own_profile.avatar_state.data() {
-            drew_avatar = our_own_avatar.show_image(
-                cx,
-                None, // don't make this avatar clickable; we handle clicks on this ProfileIcon widget directly.
-                |cx, img| utils::load_png_or_jpg(&img, cx, avatar_img_data),
-            ).is_ok();
+            drew_avatar = our_own_avatar
+                .show_image(
+                    cx,
+                    None, // don't make this avatar clickable; we handle clicks on this ProfileIcon widget directly.
+                    |cx, img| utils::load_png_or_jpg(&img, cx, avatar_img_data),
+                )
+                .is_ok();
         }
         if !drew_avatar {
             our_own_avatar.show_text(
@@ -421,10 +461,16 @@ impl AccountSettings {
 
         self.view.button(ids!(upload_avatar_button)).reset_hover(cx);
         self.view.button(ids!(delete_avatar_button)).reset_hover(cx);
-        self.view.button(ids!(accept_display_name_button)).reset_hover(cx);
-        self.view.button(ids!(cancel_display_name_button)).reset_hover(cx);
+        self.view
+            .button(ids!(accept_display_name_button))
+            .reset_hover(cx);
+        self.view
+            .button(ids!(cancel_display_name_button))
+            .reset_hover(cx);
         self.view.button(ids!(copy_user_id_button)).reset_hover(cx);
-        self.view.button(ids!(manage_account_button)).reset_hover(cx);
+        self.view
+            .button(ids!(manage_account_button))
+            .reset_hover(cx);
         self.view.button(ids!(logout_button)).reset_hover(cx);
         self.view.redraw(cx);
     }
@@ -433,7 +479,9 @@ impl AccountSettings {
 impl AccountSettingsRef {
     /// See [`AccountSettings::show()`].
     pub fn populate(&self, cx: &mut Cx, own_profile: UserProfile) {
-        let Some(mut inner) = self.borrow_mut() else { return };
+        let Some(mut inner) = self.borrow_mut() else {
+            return;
+        };
         inner.populate(cx, own_profile);
     }
 }

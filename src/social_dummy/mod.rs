@@ -73,5 +73,3 @@ impl Widget for SocialFriendList {
         DrawStep::done()
     }
 }
-
-
