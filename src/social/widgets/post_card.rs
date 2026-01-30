@@ -7,7 +7,7 @@ use makepad_widgets::*;
 use matrix_sdk::ruma::{MilliSecondsSinceUnixEpoch, OwnedEventId, OwnedRoomId, OwnedUserId};
 
 use crate::shared::avatar::AvatarWidgetExt;
-use crate::social::reactions::ReactionSummary;
+use crate::social::reactions::{reactions_for_display, ReactionSummary};
 
 live_design! {
     use link::theme::*;
@@ -23,6 +23,42 @@ live_design! {
     ICON_COLOR = #666
     ICON_HOVER_COLOR = #1d9bf0
     REACTION_SELECTED_BG = #e8f5fd
+    REACTION_NORMAL_BG = #f0f2f5
+    REACTION_SELECTED_BORDER = #1d9bf0
+    REACTION_NORMAL_BORDER = #e0e0e0
+
+    /// Button template for displaying a single reaction.
+    ReactionButton = <Button> {
+        width: Fit,
+        height: Fit,
+        padding: { top: 4, bottom: 4, left: 8, right: 8 },
+        margin: { right: 4 },
+
+        draw_bg: {
+            instance reaction_bg_color: (REACTION_NORMAL_BG)
+            instance reaction_border_color: (REACTION_NORMAL_BORDER)
+            border_radius: 12.0
+            border_size: 1.0
+
+            fn pixel(self) -> vec4 {
+                let sdf = Sdf2d::viewport(self.pos * self.rect_size);
+                sdf.box(
+                    self.border_size,
+                    self.border_size,
+                    self.rect_size.x - self.border_size * 2.0,
+                    self.rect_size.y - self.border_size * 2.0,
+                    self.border_radius
+                );
+                sdf.fill_keep(self.reaction_bg_color);
+                sdf.stroke(self.reaction_border_color, self.border_size);
+                return sdf.result;
+            }
+        }
+        draw_text: {
+            text_style: { font_size: 12.0 },
+            color: #333,
+        }
+    }
 
     /// Post card widget displaying a single post in a feed.
     pub SocialPostCard = {{SocialPostCard}} {
@@ -230,15 +266,16 @@ live_design! {
         }
 
         // Reactions row
-        reactions_row = <View> {
+        reactions_row = {{SocialReactionsRow}} {
             width: Fill,
             height: Fit,
             flow: RightWrap,
-            spacing: 8,
+            spacing: 4,
             margin: { left: 60, top: 4 },
             visible: false,
 
-            // Reactions will be dynamically added
+            // Template for reaction buttons
+            reaction_template: <ReactionButton> {}
         }
 
         // Action bar: Comment, Share, Like, Bookmark
@@ -388,6 +425,165 @@ pub enum SocialPostCardAction {
     },
     /// No action.
     None,
+}
+
+/// Reaction button data for tracking click events.
+#[derive(Clone, Debug)]
+struct ReactionButtonData {
+    emoji: String,
+    is_selected: bool,
+}
+
+// Color constants for reaction buttons
+const REACTION_BG_SELECTED: Vec4 = Vec4 {
+    x: 0.91,
+    y: 0.96,
+    z: 0.99,
+    w: 1.0,
+}; // #e8f5fd
+const REACTION_BG_NORMAL: Vec4 = Vec4 {
+    x: 0.94,
+    y: 0.95,
+    z: 0.96,
+    w: 1.0,
+}; // #f0f2f5
+const REACTION_BORDER_SELECTED: Vec4 = Vec4 {
+    x: 0.11,
+    y: 0.61,
+    z: 0.94,
+    w: 1.0,
+}; // #1d9bf0
+const REACTION_BORDER_NORMAL: Vec4 = Vec4 {
+    x: 0.88,
+    y: 0.88,
+    z: 0.88,
+    w: 1.0,
+}; // #e0e0e0
+
+/// Widget for displaying a row of reaction buttons.
+#[derive(Live, LiveHook, Widget)]
+pub struct SocialReactionsRow {
+    #[redraw]
+    #[rust]
+    area: Area,
+
+    /// Template for reaction buttons.
+    #[live]
+    reaction_template: Option<LivePtr>,
+
+    /// Created reaction buttons with their data.
+    #[rust]
+    reaction_buttons: Vec<(ButtonRef, ReactionButtonData)>,
+
+    /// Layout for the widget.
+    #[layout]
+    layout: Layout,
+
+    /// Walk for the widget.
+    #[walk]
+    walk: Walk,
+
+    /// The event ID these reactions are for.
+    #[rust]
+    event_id: Option<OwnedEventId>,
+}
+
+impl Widget for SocialReactionsRow {
+    fn handle_event(&mut self, cx: &mut Cx, event: &Event, _scope: &mut Scope) {
+        // Handle click events on reaction buttons
+        for (button_ref, data) in &self.reaction_buttons {
+            if let Hit::FingerUp(fue) = event.hits(cx, button_ref.area()) {
+                if fue.is_over && fue.is_primary_hit() && fue.was_tap() {
+                    if let Some(event_id) = &self.event_id {
+                        cx.action(SocialPostCardAction::ToggleReaction {
+                            event_id: event_id.clone(),
+                            emoji: data.emoji.clone(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    fn draw_walk(&mut self, cx: &mut Cx2d, scope: &mut Scope, walk: Walk) -> DrawStep {
+        cx.begin_turtle(walk, self.layout);
+        for (button, _) in self.reaction_buttons.iter_mut() {
+            let _ = button.draw(cx, scope);
+        }
+        cx.end_turtle();
+        DrawStep::done()
+    }
+}
+
+impl SocialReactionsRow {
+    /// Set the reactions to display.
+    pub fn set_reactions(
+        &mut self,
+        cx: &mut Cx,
+        reactions: &[crate::social::reactions::ReactionDisplay],
+        event_id: OwnedEventId,
+    ) {
+        self.event_id = Some(event_id);
+        self.reaction_buttons.clear();
+
+        let Some(template) = self.reaction_template else {
+            return;
+        };
+
+        for reaction in reactions {
+            let button = WidgetRef::new_from_ptr(cx, Some(template)).as_button();
+            button.set_text(cx, &format!("{} {}", reaction.emoji, reaction.count));
+
+            // Apply styling based on whether the user has selected this reaction
+            let (bg_color, border_color) = if reaction.is_selected {
+                (REACTION_BG_SELECTED, REACTION_BORDER_SELECTED)
+            } else {
+                (REACTION_BG_NORMAL, REACTION_BORDER_NORMAL)
+            };
+
+            button.apply_over(
+                cx,
+                live! {
+                    draw_bg: { reaction_bg_color: (bg_color), reaction_border_color: (border_color) }
+                },
+            );
+
+            self.reaction_buttons.push((
+                button,
+                ReactionButtonData {
+                    emoji: reaction.emoji.clone(),
+                    is_selected: reaction.is_selected,
+                },
+            ));
+        }
+    }
+
+    /// Clear all reactions.
+    pub fn clear(&mut self) {
+        self.reaction_buttons.clear();
+        self.event_id = None;
+    }
+}
+
+impl SocialReactionsRowRef {
+    /// See [`SocialReactionsRow::set_reactions()`].
+    pub fn set_reactions(
+        &self,
+        cx: &mut Cx,
+        reactions: &[crate::social::reactions::ReactionDisplay],
+        event_id: OwnedEventId,
+    ) {
+        if let Some(mut inner) = self.borrow_mut() {
+            inner.set_reactions(cx, reactions, event_id);
+        }
+    }
+
+    /// See [`SocialReactionsRow::clear()`].
+    pub fn clear(&self) {
+        if let Some(mut inner) = self.borrow_mut() {
+            inner.clear();
+        }
+    }
 }
 
 #[derive(Live, LiveHook, Widget)]
@@ -564,9 +760,22 @@ impl SocialPostCard {
         self.button(ids!(bookmark_button))
             .set_text(cx, bookmark_text);
 
-        // Show reactions row if there are reactions
+        // Populate and show reactions row if there are reactions
+        let has_reactions = !data.reactions.is_empty();
+        if has_reactions {
+            // Convert reactions to display format (using None for current user since
+            // we track liked state separately via is_liked)
+            let display_reactions = reactions_for_display(&data.reactions, None);
+            if let Some(mut reactions_row) = self
+                .view
+                .widget(ids!(reactions_row))
+                .borrow_mut::<SocialReactionsRow>()
+            {
+                reactions_row.set_reactions(cx, &display_reactions, data.event_id.clone());
+            }
+        }
         self.view(ids!(reactions_row))
-            .set_visible(cx, !data.reactions.is_empty());
+            .set_visible(cx, has_reactions);
     }
 
     /// Update the like state.
@@ -586,6 +795,43 @@ impl SocialPostCard {
         let bookmark_text = if is_bookmarked { "🔖" } else { "📑" };
         self.button(ids!(bookmark_button))
             .set_text(cx, bookmark_text);
+    }
+
+    /// Set the media texture for displaying an image in the post.
+    ///
+    /// This method should be called when the media image has been loaded
+    /// from the MediaCache or another source.
+    ///
+    /// # Arguments
+    /// * `cx` - The Makepad context
+    /// * `texture` - The texture to display, or None to clear the media
+    pub fn set_media_texture(&mut self, cx: &mut Cx, texture: Option<Texture>) {
+        let media_image = self.view.image(ids!(media_image));
+        media_image.set_texture(cx, texture.clone());
+
+        // Show media container if we have a texture
+        self.view(ids!(media_container))
+            .set_visible(cx, texture.is_some());
+    }
+
+    /// Load media image data into the post card.
+    ///
+    /// This is a convenience method that creates a texture from raw image data.
+    ///
+    /// # Arguments
+    /// * `cx` - The Makepad context
+    /// * `data` - The raw image data (PNG or JPEG)
+    ///
+    /// # Returns
+    /// Ok(()) if the image was loaded successfully, Err otherwise.
+    pub fn load_media_from_data(&mut self, cx: &mut Cx, data: &[u8]) -> Result<(), String> {
+        let media_image = self.view.image(ids!(media_image));
+        crate::utils::load_png_or_jpg(&media_image, cx, data)
+            .map_err(|e| format!("Failed to load image: {:?}", e))?;
+
+        // Show the media container
+        self.view(ids!(media_container)).set_visible(cx, true);
+        Ok(())
     }
 }
 
@@ -608,6 +854,22 @@ impl SocialPostCardRef {
     pub fn set_bookmarked(&self, cx: &mut Cx, is_bookmarked: bool) {
         if let Some(mut inner) = self.borrow_mut() {
             inner.set_bookmarked(cx, is_bookmarked);
+        }
+    }
+
+    /// See [`SocialPostCard::set_media_texture()`].
+    pub fn set_media_texture(&self, cx: &mut Cx, texture: Option<Texture>) {
+        if let Some(mut inner) = self.borrow_mut() {
+            inner.set_media_texture(cx, texture);
+        }
+    }
+
+    /// See [`SocialPostCard::load_media_from_data()`].
+    pub fn load_media_from_data(&self, cx: &mut Cx, data: &[u8]) -> Result<(), String> {
+        if let Some(mut inner) = self.borrow_mut() {
+            inner.load_media_from_data(cx, data)
+        } else {
+            Err("Widget not available".to_string())
         }
     }
 }

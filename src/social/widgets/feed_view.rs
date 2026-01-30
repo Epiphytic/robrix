@@ -6,7 +6,7 @@
 use makepad_widgets::*;
 use matrix_sdk::ruma::OwnedEventId;
 
-use crate::social::widgets::post_card::{PostCardData, SocialPostCardAction};
+use crate::social::widgets::post_card::{PostCardData, SocialPostCard, SocialPostCardAction};
 
 live_design! {
     use link::theme::*;
@@ -200,7 +200,71 @@ impl Widget for SocialFeedView {
         // Update visibility of sections based on state
         self.update_visibility(cx);
 
-        self.view.draw_walk(cx, scope, walk)
+        // Use stepping pattern to get access to the PortalList
+        while let Some(widget_to_draw) = self.view.draw_walk(cx, scope, walk).step() {
+            let portal_list_ref = widget_to_draw.as_portal_list();
+            let Some(mut list) = portal_list_ref.borrow_mut() else {
+                continue;
+            };
+
+            // Calculate total item count based on state
+            let post_count = self.posts.len();
+            let total_count = match self.state {
+                FeedState::Empty => 1,                    // Just empty state
+                FeedState::Loading => 1,                  // Just loading indicator
+                FeedState::Loaded => post_count,          // Posts only
+                FeedState::LoadingMore => post_count + 1, // Posts + loading at bottom
+                FeedState::Refreshing => post_count,      // Posts (refresh indicator separate)
+                FeedState::Error => 1,                    // Error state
+            };
+
+            list.set_item_range(cx, 0, total_count);
+
+            while let Some(item_id) = list.next_visible_item(cx) {
+                let item = match self.state {
+                    // Empty state
+                    FeedState::Empty => list.item(cx, item_id, live_id!(empty_state)),
+                    // Loading state
+                    FeedState::Loading => list.item(cx, item_id, live_id!(loading_item)),
+                    // Normal loaded state with posts
+                    FeedState::Loaded | FeedState::Refreshing => {
+                        if let Some(post_data) = self.posts.get(item_id) {
+                            let item = list.item(cx, item_id, live_id!(post_item));
+                            if let Some(mut inner) = item.borrow_mut::<SocialPostCard>() {
+                                inner.set_post(cx, post_data);
+                            }
+                            item
+                        } else {
+                            // Fallback to empty view for out-of-bounds
+                            list.item(cx, item_id, live_id!(empty_state))
+                        }
+                    }
+                    // Loading more - posts + loading indicator at bottom
+                    FeedState::LoadingMore => {
+                        if item_id < post_count {
+                            if let Some(post_data) = self.posts.get(item_id) {
+                                let item = list.item(cx, item_id, live_id!(post_item));
+                                if let Some(mut inner) = item.borrow_mut::<SocialPostCard>() {
+                                    inner.set_post(cx, post_data);
+                                }
+                                item
+                            } else {
+                                list.item(cx, item_id, live_id!(empty_state))
+                            }
+                        } else {
+                            // Loading indicator at the bottom
+                            list.item(cx, item_id, live_id!(loading_item))
+                        }
+                    }
+                    // Error state
+                    FeedState::Error => list.item(cx, item_id, live_id!(empty_state)),
+                };
+
+                item.draw_all(cx, scope);
+            }
+        }
+
+        DrawStep::done()
     }
 }
 
