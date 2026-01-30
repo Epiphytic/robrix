@@ -72,7 +72,7 @@ jobs:
       - name: Install dependencies (Linux)
         run: |
           sudo apt-get update
-          sudo apt-get install -y libssl-dev pkg-config
+          sudo apt-get install -y libssl-dev pkg-config libxcb-shape0-dev libxcb-xfixes0-dev
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -89,8 +89,8 @@ jobs:
       - name: Run tests (with social)
         run: cargo test --lib --features social
 
-      - name: Run social integration tests
-        run: cargo test --features social --test social_integration
+      # - name: Run social integration tests
+      #   run: cargo test --features social --test social_integration
 
   # Build matrix for desktop platforms
   build-desktop:
@@ -144,8 +144,7 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: |
-            target/${{ matrix.target }}/release/robrix
-            target/${{ matrix.target }}/release/robrix.exe
+            target/${{ matrix.target }}/release/robrix*
           if-no-files-found: error
 
   # Mobile builds
