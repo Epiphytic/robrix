@@ -135,7 +135,7 @@ get_runner_url() {
 get_runner_token() {
 	log_info "Fetching runner registration token via gh CLI..."
 	local token
-	token=$(gh api "repos/${REPO}/actions/runners/registration-token" -X POST --jq '.token' 2>/dev/null)
+	token=$(gh api "repos/${REPO}/actions/runners/registration-token" -X POST --jq '.token' 2>/dev/null | tr -d '\n\r')
 
 	if [[ -z "$token" ]]; then
 		log_error "Failed to get runner registration token."
@@ -146,7 +146,8 @@ get_runner_token() {
 		exit 1
 	fi
 
-	echo "$token"
+	# Return token without any trailing whitespace
+	printf '%s' "$token"
 }
 
 generate_labels() {
