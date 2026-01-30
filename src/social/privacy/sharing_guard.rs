@@ -57,6 +57,17 @@ impl SharingGuard {
         mentioned_users: &[OwnedUserId],
         target_members: &[OwnedUserId],
     ) -> ShareValidation {
+        // Warn when sharing from semi-private to public
+        // Check this BEFORE general privacy levels, as Friends > Public would otherwise be blocked
+        if source_privacy == PrivacyLevel::Friends && target_privacy == PrivacyLevel::Public {
+            return ShareValidation::RequiresConfirmation {
+                warning: "You are about to share friends-only content publicly. \
+                         The original author may not have intended this content \
+                         to be shared publicly."
+                    .to_string(),
+            };
+        }
+
         // Check privacy levels
         if !source_privacy.can_share_to(target_privacy) {
             return ShareValidation::BlockedPrivacyLeak {
@@ -80,16 +91,6 @@ impl SharingGuard {
         if !missing.is_empty() {
             return ShareValidation::MissingMentions {
                 missing_users: missing,
-            };
-        }
-
-        // Warn when sharing from semi-private to public
-        if source_privacy == PrivacyLevel::Friends && target_privacy == PrivacyLevel::Public {
-            return ShareValidation::RequiresConfirmation {
-                warning: "You are about to share friends-only content publicly. \
-                         The original author may not have intended this content \
-                         to be shared publicly."
-                    .to_string(),
             };
         }
 
