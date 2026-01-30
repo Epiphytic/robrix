@@ -230,7 +230,7 @@ impl PostContent {
                 };
 
                 // Generate HTML with link preview if available
-                let html = if let Some(preview) = preview {
+                let html = if let Some(preview) = &**preview {
                     let mut html = String::new();
                     if let Some(comment) = comment {
                         html.push_str(&format!("<p>{}</p>", htmlize::escape_text(comment)));
