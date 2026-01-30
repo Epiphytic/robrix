@@ -1,0 +1,13 @@
+[package]
+name = "robrix-social-events"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Custom Matrix event types for social media features"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+ruma = { version = "0.14.1", features = ["events"] }
+thiserror = "2.0"
+url = { version = "2.5", features = ["serde"] }
