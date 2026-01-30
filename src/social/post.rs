@@ -419,7 +419,7 @@ mod tests {
 
     #[test]
     fn test_image_post_with_caption() {
-        let mxc: OwnedMxcUri = "mxc://example.org/abc123".try_into().unwrap();
+        let mxc: OwnedMxcUri = "mxc://example.org/abc123".into();
         let post = Post::image(mxc, 800, 600).with_caption("A nice photo");
         assert!(matches!(
             post.content,

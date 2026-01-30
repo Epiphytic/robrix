@@ -56,7 +56,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libssl-dev pkg-config libxcb-shape0-dev libxcb-xfixes0-dev \
-            libwayland-dev libwayland-client0 libwayland-cursor0 libwayland-egl1
+            libwayland-dev libwayland-client0 libwayland-cursor0 libwayland-egl1 \
+            libx11-dev libxcursor-dev libasound2-dev libpulse-dev libxkbcommon-dev
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -80,7 +81,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libssl-dev pkg-config libxcb-shape0-dev libxcb-xfixes0-dev \
-            libwayland-dev libwayland-client0 libwayland-cursor0 libwayland-egl1
+            libwayland-dev libwayland-client0 libwayland-cursor0 libwayland-egl1 \
+            libx11-dev libxcursor-dev libasound2-dev libpulse-dev libxkbcommon-dev
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -134,7 +136,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libssl-dev pkg-config libxcb-shape0-dev libxcb-xfixes0-dev \
-            libwayland-dev libwayland-client0 libwayland-cursor0 libwayland-egl1
+            libwayland-dev libwayland-client0 libwayland-cursor0 libwayland-egl1 \
+            libx11-dev libxcursor-dev libasound2-dev libpulse-dev libxkbcommon-dev
 
       - name: Cache cargo registry
         uses: actions/cache@v4
