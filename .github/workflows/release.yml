@@ -1,7 +1,6 @@
 # Robrix Release CI Workflow
 #
-# NOTE: Automatic releases (on tag push) are DISABLED by default.
-# Set repository variable ENABLE_ROBRIX_RELEASES=true to enable automatic releases.
+# NOTE: Set repository variable DISABLE_ROBRIX_RELEASES=true to disable automatic releases.
 # Manual workflow dispatch is always available regardless of this setting.
 #
 # RUNNER COST NOTES:
@@ -78,7 +77,7 @@ jobs:
   check_tag_version:
     name: Check Release Tag and Cargo.toml Version Consistency
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && vars.ENABLE_ROBRIX_RELEASES == 'true'
+    if: github.event_name == 'push' && vars.DISABLE_ROBRIX_RELEASES != 'true'
     steps:
       - uses: actions/checkout@v4
 
