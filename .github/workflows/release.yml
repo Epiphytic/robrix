@@ -244,7 +244,13 @@ jobs:
 
             SIGN_IDENTITY="Developer ID Application"
           else
-            echo "No Developer ID certificate - using ad-hoc signing (local devices only)"
+            echo "::warning::No Developer ID certificate configured - using ad-hoc signing (local devices only)"
+            echo "::warning::To enable Developer ID signing for distribution, configure these GitHub secrets:"
+            echo "::warning::  MACOS_CERTIFICATE     - Base64-encoded .p12 Developer ID certificate"
+            echo "::warning::  MACOS_CERTIFICATE_PWD - Password for the .p12 file"
+            echo "::warning::  MACOS_KEYCHAIN_PWD    - Any password for temporary keychain"
+            echo "::warning::For notarization, also add: APPLE_ID, APPLE_ID_PWD, APPLE_TEAM_ID"
+            echo "::warning::Run ./scripts/setup-macos-signing.sh to configure automatically"
             USE_DEVELOPER_ID=false
             SIGN_IDENTITY="-"
           fi
