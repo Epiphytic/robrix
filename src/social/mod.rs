@@ -21,6 +21,8 @@ mod requests;
 
 pub use actions::*;
 pub use requests::*;
+pub use profile_room::{ProfileRoomConfig, ProfileRoomError, ProfileRoomService};
+pub use widgets::profile_page::{LoadedProfile, SocialProfileAction, SocialProfilePage};
 
 /// Register all social feature UI components.
 pub fn live_design(cx: &mut Cx) {
