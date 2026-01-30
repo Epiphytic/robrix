@@ -1,0 +1,120 @@
+name: Release with Social Features
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release'
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            suffix: linux-x64.tar.gz
+            asset_content_type: application/gzip
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            suffix: macos-x64.tar.gz
+            asset_content_type: application/gzip
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            suffix: macos-arm64.tar.gz
+            asset_content_type: application/gzip
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            suffix: windows-x64.zip
+            asset_content_type: application/zip
+
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config libxcb-shape0-dev libxcb-xfixes0-dev
+
+      - name: Build release
+        run: cargo build --profile distribution --features social --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          cd target/${{ matrix.target }}/distribution
+          tar czvf ../../../robrix-social-${{ matrix.suffix }} robrix
+
+      - name: Package (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          cd target/${{ matrix.target }}/distribution
+          Compress-Archive -Path robrix.exe -DestinationPath ../../../robrix-social-${{ matrix.suffix }}
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: robrix-social-${{ matrix.suffix }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-mobile-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            os: ubuntu-latest
+          - platform: ios
+            os: macos-latest
+
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-makepad
+        run: cargo install cargo-makepad --locked
+
+      - name: Setup Android
+        if: matrix.platform == 'android'
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Android NDK
+        if: matrix.platform == 'android'
+        run: |
+          sdkmanager --install "ndk;25.2.9519653"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
+
+      - name: Build release
+        run: cargo makepad ${{ matrix.platform }} build --profile distribution --features social
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/makepad-${{ matrix.platform }}/distribution/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
