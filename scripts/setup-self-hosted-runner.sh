@@ -67,19 +67,19 @@ NC='\033[0m' # No Color
 # ============================================================================
 
 log_info() {
-	echo -e "${BLUE}[INFO]${NC} $1"
+	echo -e "${BLUE}[INFO]${NC} $1" >&2
 }
 
 log_success() {
-	echo -e "${GREEN}[SUCCESS]${NC} $1"
+	echo -e "${GREEN}[SUCCESS]${NC} $1" >&2
 }
 
 log_warn() {
-	echo -e "${YELLOW}[WARN]${NC} $1"
+	echo -e "${YELLOW}[WARN]${NC} $1" >&2
 }
 
 log_error() {
-	echo -e "${RED}[ERROR]${NC} $1"
+	echo -e "${RED}[ERROR]${NC} $1" >&2
 }
 
 show_help() {
@@ -211,12 +211,9 @@ get_runner_pid() {
 	fi
 
 	# Fallback: search for running runner process
+	# Pattern: runner name appears in path BEFORE Runner.Listener
 	local pid
-	if [[ "$(detect_os)" == "osx" ]]; then
-		pid=$(pgrep -f "Runner.Listener.*${RUNNER_NAME}" 2>/dev/null | head -1)
-	else
-		pid=$(pgrep -f "Runner.Listener.*${RUNNER_NAME}" 2>/dev/null | head -1)
-	fi
+	pid=$(pgrep -f "${RUNNER_NAME}.*Runner.Listener" 2>/dev/null | head -1)
 
 	if [[ -n "$pid" ]] && is_process_running "$pid"; then
 		# Update PID file
@@ -293,16 +290,25 @@ cmd_start() {
 
 	# Start runner in background
 	nohup ./run.sh >"${RUNNER_BASE_DIR}/runner.log" 2>&1 &
-	local pid=$!
 
-	# Wait a moment for the runner to start
-	sleep 2
+	# Wait for Runner.Listener to actually start (run.sh spawns it as child)
+	local count=0
+	local pid=""
+	while [[ $count -lt 10 ]]; do
+		sleep 1
+		# Find the actual Runner.Listener process (runner name is in path before Runner.Listener)
+		pid=$(pgrep -f "${RUNNER_NAME}.*Runner.Listener" 2>/dev/null | head -1)
+		if [[ -n "$pid" ]]; then
+			break
+		fi
+		((count++))
+	done
 
 	# Verify it started
-	if is_process_running "$pid"; then
+	if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
 		echo "$pid" >"$PID_FILE"
 		log_success "Runner started (PID: $pid)"
-		echo "Log file: ${RUNNER_BASE_DIR}/runner.log"
+		echo "Log file: ${RUNNER_BASE_DIR}/runner.log" >&2
 		return 0
 	else
 		log_error "Runner failed to start. Check ${RUNNER_BASE_DIR}/runner.log"
