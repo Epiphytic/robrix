@@ -5,15 +5,15 @@
 
 use makepad_widgets::*;
 
-pub mod profile_room;
-pub mod feed_room;
-pub mod post;
-pub mod reactions;
+pub mod discovery;
 pub mod events;
+pub mod feed_room;
 pub mod friends;
 pub mod newsfeed;
-pub mod discovery;
+pub mod post;
 pub mod privacy;
+pub mod profile_room;
+pub mod reactions;
 pub mod widgets;
 
 mod actions;
@@ -21,8 +21,26 @@ mod requests;
 
 pub use actions::*;
 pub use requests::*;
+
+// Re-export core types from profile_room (Phase 2)
 pub use profile_room::{ProfileRoomConfig, ProfileRoomError, ProfileRoomService};
+
+// Re-export profile page widgets (Phase 2)
 pub use widgets::profile_page::{LoadedProfile, SocialProfileAction, SocialProfilePage};
+
+// Re-export feed room types (Phase 3)
+pub use feed_room::{FeedPrivacy, FeedRoomError, FeedRoomService, UserFeeds};
+
+// Re-export post types (Phase 3)
+pub use post::{FeedPost, Post, PostContent, PostError, PostMetadata};
+
+// Re-export reactions types (Phase 3)
+pub use reactions::{common_emojis, reactions_for_display, ReactionDisplay, ReactionSummary};
+
+// Re-export widget types (Phase 3)
+pub use widgets::feed_view::{FeedState, SocialFeedView, SocialFeedViewAction};
+pub use widgets::post_card::{LinkPreviewData, PostCardData, SocialPostCard, SocialPostCardAction};
+pub use widgets::post_composer::{AttachedMedia, SocialPostComposer, SocialPostComposerAction};
 
 /// Register all social feature UI components.
 pub fn live_design(cx: &mut Cx) {
