@@ -158,10 +158,9 @@ jobs:
                 ;;
             esac
           else
-            # Tag-triggered releases: use self-hosted runners for ARM builds to avoid large runner costs
-            # Self-hosted runners must be configured with labels: self-hosted, robrix, linux, arm64
-            # Run ./scripts/setup-self-hosted-runner.sh to configure a runner
-            matrix='{"include":[{"os":"ubuntu-24.04","arch":"x86_64"},{"os":["self-hosted","robrix","linux","arm64"],"arch":"aarch64"},{"os":"ubuntu-22.04","arch":"x86_64"},{"os":["self-hosted","robrix","linux","arm64"],"arch":"aarch64"},{"os":"macos-14","arch":"aarch64"},{"os":"macos-15-intel","arch":"x86_64"},{"os":"windows-2022","arch":"x86_64"}]}'
+            # Tag-triggered releases: x86_64 only for Linux (no ARM builds)
+            # macOS includes both Intel (x86_64) and Apple Silicon (aarch64)
+            matrix='{"include":[{"os":"ubuntu-24.04","arch":"x86_64"},{"os":"ubuntu-22.04","arch":"x86_64"},{"os":"macos-14","arch":"aarch64"},{"os":"macos-15-intel","arch":"x86_64"},{"os":"windows-2022","arch":"x86_64"}]}'
           fi
           echo "matrix=$matrix" >> $GITHUB_OUTPUT
 
@@ -209,6 +208,76 @@ jobs:
         run: |
           cargo packager --release
           ls ./dist
+
+      - name: Sign macOS App
+        if: runner.os == 'macOS'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+          MACOS_KEYCHAIN_PWD: ${{ secrets.MACOS_KEYCHAIN_PWD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PWD: ${{ secrets.APPLE_ID_PWD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Create a temporary keychain
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          security create-keychain -p "$MACOS_KEYCHAIN_PWD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PWD" $KEYCHAIN_PATH
+
+          # Import certificate
+          echo "$MACOS_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/certificate.p12
+          security import $RUNNER_TEMP/certificate.p12 -P "$MACOS_CERTIFICATE_PWD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          # Allow codesign to access the keychain
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$MACOS_KEYCHAIN_PWD" $KEYCHAIN_PATH
+
+          # Find and sign the app inside the DMG
+          DMG_FILE=$(find ./dist -name "*.dmg" | head -1)
+          if [ -n "$DMG_FILE" ]; then
+            echo "Signing DMG: $DMG_FILE"
+
+            # Mount the DMG
+            MOUNT_POINT=$RUNNER_TEMP/dmg_mount
+            mkdir -p $MOUNT_POINT
+            hdiutil attach "$DMG_FILE" -mountpoint $MOUNT_POINT -nobrowse
+
+            # Find and sign the app
+            APP_PATH=$(find $MOUNT_POINT -name "*.app" -maxdepth 1 | head -1)
+            if [ -n "$APP_PATH" ]; then
+              # Create a writable copy
+              TEMP_APP=$RUNNER_TEMP/Robrix.app
+              cp -R "$APP_PATH" "$TEMP_APP"
+              hdiutil detach $MOUNT_POINT
+
+              # Sign the app
+              codesign --force --deep --sign "Developer ID Application" "$TEMP_APP" --options runtime
+
+              # Create a new signed DMG
+              SIGNED_DMG="${DMG_FILE%.dmg}-signed.dmg"
+              hdiutil create -volname "Robrix" -srcfolder "$TEMP_APP" -ov -format UDZO "$SIGNED_DMG"
+
+              # Sign the DMG itself
+              codesign --force --sign "Developer ID Application" "$SIGNED_DMG"
+
+              # Replace original with signed version
+              mv "$SIGNED_DMG" "$DMG_FILE"
+
+              # Notarize the app (optional, requires Apple ID credentials)
+              if [ -n "$APPLE_ID" ] && [ -n "$APPLE_ID_PWD" ] && [ -n "$APPLE_TEAM_ID" ]; then
+                echo "Notarizing..."
+                xcrun notarytool submit "$DMG_FILE" --apple-id "$APPLE_ID" --password "$APPLE_ID_PWD" --team-id "$APPLE_TEAM_ID" --wait
+                xcrun stapler staple "$DMG_FILE"
+              fi
+            else
+              hdiutil detach $MOUNT_POINT
+            fi
+          fi
+
+          # Cleanup
+          rm -f $RUNNER_TEMP/certificate.p12
+          security delete-keychain $KEYCHAIN_PATH
 
       - name: Set Version
         run: |
